@@ -1,0 +1,143 @@
+{
+  "salon": {
+    "name": "Nuvu Salon & Spa",
+    "tagline": "Where beauty meets innovation",
+    "phone": "+1234567890",
+    "email": "info@nuvusalon.com",
+    "website": "https://nuvusalon.com"
+  },
+  "locations": [
+    {
+      "name": "Downtown",
+      "address": "123 Main Street, Suite 100, New York, NY 10001",
+      "phone": "+1234567890",
+      "hours": {
+        "monday": "9:00 AM - 7:00 PM",
+        "tuesday": "9:00 AM - 7:00 PM",
+        "wednesday": "9:00 AM - 7:00 PM",
+        "thursday": "9:00 AM - 8:00 PM",
+        "friday": "9:00 AM - 8:00 PM",
+        "saturday": "8:00 AM - 6:00 PM",
+        "sunday": "10:00 AM - 4:00 PM"
+      }
+    }
+  ],
+  "services": [
+    {
+      "category": "Hair",
+      "items": [
+        {"name": "Haircut & Style", "duration_minutes": 45, "price": "$45 - $75"},
+        {"name": "Blowout", "duration_minutes": 30, "price": "$35 - $50"},
+        {"name": "Color (Full)", "duration_minutes": 120, "price": "$120 - $200"},
+        {"name": "Highlights / Balayage", "duration_minutes": 150, "price": "$150 - $300"},
+        {"name": "Deep Conditioning Treatment", "duration_minutes": 30, "price": "$30 - $50"},
+        {"name": "Keratin Treatment", "duration_minutes": 180, "price": "$250 - $400"},
+        {"name": "Extensions (Consultation Required)", "duration_minutes": 60, "price": "Starting at $500"}
+      ]
+    },
+    {
+      "category": "Nails",
+      "items": [
+        {"name": "Classic Manicure", "duration_minutes": 30, "price": "$25"},
+        {"name": "Gel Manicure", "duration_minutes": 45, "price": "$40"},
+        {"name": "Classic Pedicure", "duration_minutes": 45, "price": "$35"},
+        {"name": "Spa Pedicure", "duration_minutes": 60, "price": "$55"},
+        {"name": "Acrylic Full Set", "duration_minutes": 60, "price": "$50 - $70"},
+        {"name": "Nail Art (per nail)", "duration_minutes": 10, "price": "$5 - $15"}
+      ]
+    },
+    {
+      "category": "Skin & Facials",
+      "items": [
+        {"name": "Classic Facial", "duration_minutes": 60, "price": "$80"},
+        {"name": "Deep Cleansing Facial", "duration_minutes": 75, "price": "$110"},
+        {"name": "Anti-Aging Facial", "duration_minutes": 90, "price": "$150"},
+        {"name": "Microdermabrasion", "duration_minutes": 60, "price": "$120"},
+        {"name": "Chemical Peel", "duration_minutes": 45, "price": "$100 - $175"}
+      ]
+    },
+    {
+      "category": "Body & Spa",
+      "items": [
+        {"name": "Swedish Massage (60 min)", "duration_minutes": 60, "price": "$90"},
+        {"name": "Deep Tissue Massage (60 min)", "duration_minutes": 60, "price": "$110"},
+        {"name": "Hot Stone Massage (90 min)", "duration_minutes": 90, "price": "$140"},
+        {"name": "Body Scrub & Wrap", "duration_minutes": 90, "price": "$130"},
+        {"name": "Aromatherapy Massage (60 min)", "duration_minutes": 60, "price": "$100"}
+      ]
+    },
+    {
+      "category": "Waxing",
+      "items": [
+        {"name": "Eyebrow Wax", "duration_minutes": 15, "price": "$15"},
+        {"name": "Lip Wax", "duration_minutes": 10, "price": "$10"},
+        {"name": "Full Face Wax", "duration_minutes": 30, "price": "$40"},
+        {"name": "Full Leg Wax", "duration_minutes": 45, "price": "$60"},
+        {"name": "Brazilian Wax", "duration_minutes": 30, "price": "$55 - $70"}
+      ]
+    }
+  ],
+  "technicians": [
+    {
+      "name": "Maria Santos",
+      "title": "Senior Stylist",
+      "specialties": ["Haircut & Style", "Color (Full)", "Highlights / Balayage", "Keratin Treatment"],
+      "available_days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
+    },
+    {
+      "name": "James Lee",
+      "title": "Master Barber & Colorist",
+      "specialties": ["Haircut & Style", "Color (Full)", "Highlights / Balayage"],
+      "available_days": ["tuesday", "wednesday", "thursday", "friday", "saturday"]
+    },
+    {
+      "name": "Aisha Johnson",
+      "title": "Nail Technician",
+      "specialties": ["Classic Manicure", "Gel Manicure", "Classic Pedicure", "Spa Pedicure", "Acrylic Full Set", "Nail Art (per nail)"],
+      "available_days": ["monday", "wednesday", "thursday", "friday", "saturday"]
+    },
+    {
+      "name": "Priya Patel",
+      "title": "Esthetician",
+      "specialties": ["Classic Facial", "Deep Cleansing Facial", "Anti-Aging Facial", "Microdermabrasion", "Chemical Peel"],
+      "available_days": ["monday", "tuesday", "thursday", "friday", "saturday"]
+    },
+    {
+      "name": "Elena Rossi",
+      "title": "Massage Therapist",
+      "specialties": ["Swedish Massage (60 min)", "Deep Tissue Massage (60 min)", "Hot Stone Massage (90 min)", "Body Scrub & Wrap", "Aromatherapy Massage (60 min)"],
+      "available_days": ["monday", "tuesday", "wednesday", "friday", "saturday"]
+    },
+    {
+      "name": "Sophie Chen",
+      "title": "Waxing Specialist",
+      "specialties": ["Eyebrow Wax", "Lip Wax", "Full Face Wax", "Full Leg Wax", "Brazilian Wax"],
+      "available_days": ["tuesday", "wednesday", "thursday", "saturday", "sunday"]
+    }
+  ],
+  "policies": {
+    "cancellation": "Please cancel or reschedule at least 24 hours before your appointment to avoid a $25 cancellation fee.",
+    "late_arrival": "If you arrive more than 15 minutes late, we may need to reschedule to ensure quality service for all our guests.",
+    "deposits": "A deposit may be required for services over $200. Deposits are applied to the service total.",
+    "gift_cards": "Gift cards are available in any denomination and can be purchased in-salon or by calling us.",
+    "first_time": "First-time clients receive 15% off their first service."
+  },
+  "faq": [
+    {
+      "question": "Do I need an appointment?",
+      "answer": "We recommend booking an appointment to guarantee your preferred time and technician. Walk-ins are welcome based on availability."
+    },
+    {
+      "question": "What forms of payment do you accept?",
+      "answer": "We accept cash, all major credit cards, Apple Pay, Google Pay, and gift cards."
+    },
+    {
+      "question": "Is parking available?",
+      "answer": "Yes, we have a dedicated parking lot behind the building with free parking for clients."
+    },
+    {
+      "question": "Do you offer bridal or group packages?",
+      "answer": "Yes! We offer customizable bridal and group packages. Please call to discuss your needs and we'll create a tailored package."
+    }
+  ]
+}
