@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,7 +17,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.ai.gemini_agent import research
 from app.config import get_settings
-from app.integrations.google_sheets import setup_spreadsheet
+from app.integrations.google_sheets import (
+    get_appointments,
+    get_transcripts,
+    setup_spreadsheet,
+)
 from app.knowledge_base.loader import (
     get_full_kb,
     get_services_flat,
@@ -86,85 +91,38 @@ app.add_middleware(
 app.include_router(voice_router)
 
 
-# ── Root Landing Page ──────────────────────────────────────────
+# ── Admin Dashboard ────────────────────────────────────────────
+
+_TEMPLATE_PATH = Path(__file__).parent / "templates" / "dashboard.html"
+
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Landing page with system status and API docs link."""
+    """Admin dashboard: outbound calls, transcripts, appointments, live status."""
     settings = get_settings()
-    return f"""\
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{settings.salon_name} — Voice Agent</title>
-  <style>
-    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-           background: #0f0f1a; color: #e0e0e0; min-height: 100vh;
-           display: flex; align-items: center; justify-content: center; }}
-    .card {{ background: #1a1a2e; border-radius: 16px; padding: 48px;
-             max-width: 520px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }}
-    .badge {{ display: inline-block; background: #10b981; color: #fff; font-size: 12px;
-              font-weight: 600; padding: 4px 12px; border-radius: 20px; margin-bottom: 16px;
-              text-transform: uppercase; letter-spacing: 0.5px; }}
-    h1 {{ font-size: 28px; margin-bottom: 8px;
-          background: linear-gradient(135deg, #667eea, #764ba2);
-          -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
-    .sub {{ color: #888; margin-bottom: 32px; font-size: 15px; }}
-    .status {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 32px; }}
-    .status-item {{ background: #16213e; padding: 14px; border-radius: 10px; }}
-    .status-item .label {{ font-size: 12px; color: #667; text-transform: uppercase;
-                           letter-spacing: 0.5px; margin-bottom: 4px; }}
-    .status-item .value {{ font-size: 14px; font-weight: 500; }}
-    .dot {{ display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-            margin-right: 6px; vertical-align: middle; }}
-    .dot.on {{ background: #10b981; }}
-    .dot.off {{ background: #ef4444; }}
-    .links {{ display: flex; gap: 12px; }}
-    .links a {{ flex: 1; text-align: center; padding: 12px; border-radius: 10px;
-                text-decoration: none; font-weight: 500; font-size: 14px;
-                transition: opacity 0.2s; }}
-    .links a:hover {{ opacity: 0.85; }}
-    .links .primary {{ background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }}
-    .links .secondary {{ background: #16213e; color: #a0a0b8; }}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <span class="badge">Live</span>
-    <h1>{settings.salon_name}</h1>
-    <p class="sub">AI Voice Agent &mdash; Appointment Booking System</p>
-    <div class="status">
-      <div class="status-item">
-        <div class="label">Twilio VoIP</div>
-        <div class="value"><span class="dot {'on' if settings.twilio_account_sid else 'off'}"></span>
-          {'Connected' if settings.twilio_account_sid else 'Not configured'}</div>
-      </div>
-      <div class="status-item">
-        <div class="label">Gemini AI</div>
-        <div class="value"><span class="dot {'on' if settings.gemini_api_key else 'off'}"></span>
-          {'Connected' if settings.gemini_api_key else 'Not configured'}</div>
-      </div>
-      <div class="status-item">
-        <div class="label">Google Sheets</div>
-        <div class="value"><span class="dot {'on' if settings.google_sheet_id else 'off'}"></span>
-          {'Connected' if settings.google_sheet_id else 'Not configured'}</div>
-      </div>
-      <div class="status-item">
-        <div class="label">Email (SendGrid)</div>
-        <div class="value"><span class="dot {'on' if settings.sendgrid_api_key else 'off'}"></span>
-          {'Connected' if settings.sendgrid_api_key else 'Not configured'}</div>
-      </div>
-    </div>
-    <div class="links">
-      <a href="/docs" class="primary">API Docs</a>
-      <a href="/health" class="secondary">Health Check</a>
-    </div>
-  </div>
-</body>
-</html>"""
+    template = _TEMPLATE_PATH.read_text()
+
+    def _dot(val: str) -> tuple[str, str]:
+        return ("on", "Connected") if val else ("off", "Not configured")
+
+    tw_dot, tw_lbl = _dot(settings.twilio_account_sid)
+    gm_dot, gm_lbl = _dot(settings.gemini_api_key)
+    sh_dot, sh_lbl = _dot(settings.google_sheet_id)
+    em_dot, em_lbl = _dot(settings.sendgrid_api_key)
+
+    html = (
+        template
+        .replace("{{salon_name}}", settings.salon_name)
+        .replace("{{twilio_dot}}", tw_dot)
+        .replace("{{twilio_label}}", tw_lbl)
+        .replace("{{gemini_dot}}", gm_dot)
+        .replace("{{gemini_label}}", gm_lbl)
+        .replace("{{sheets_dot}}", sh_dot)
+        .replace("{{sheets_label}}", sh_lbl)
+        .replace("{{email_dot}}", em_dot)
+        .replace("{{email_label}}", em_lbl)
+    )
+    return HTMLResponse(content=html)
 
 
 # ── Health Check ───────────────────────────────────────────────
@@ -247,6 +205,26 @@ async def api_outbound_call(request: OutboundCallRequest):
     """
     from app.voice.outbound import initiate_outbound_call
     return initiate_outbound_call(request)
+
+
+@app.get("/api/transcripts")
+async def api_transcripts(limit: int = 50):
+    """Fetch recent call transcripts from Google Sheets."""
+    try:
+        rows = get_transcripts(limit=limit)
+        return {"transcripts": rows}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@app.get("/api/appointments")
+async def api_appointments(limit: int = 50):
+    """Fetch recent appointments from Google Sheets."""
+    try:
+        rows = get_appointments(limit=limit)
+        return {"appointments": rows}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
 @app.post("/api/setup-sheets")
