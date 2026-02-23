@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{salon_name}} — Dashboard</title>
+  <style>
+    :root {
+      --bg: #0f0f1a; --surface: #1a1a2e; --surface2: #16213e;
+      --border: #2a2a4a; --text: #e0e0e0; --muted: #888;
+      --accent: #667eea; --accent2: #764ba2;
+      --green: #10b981; --red: #ef4444; --amber: #f59e0b; --blue: #3b82f6;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.5;
+    }
+
+    /* ── Layout ─────────────────────────────────── */
+    .topbar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 16px 32px; display: flex; align-items: center; gap: 16px;
+    }
+    .topbar h1 {
+      font-size: 20px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .topbar .badge {
+      background: var(--green); color: #fff; font-size: 11px; font-weight: 600;
+      padding: 3px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .topbar .spacer { flex: 1; }
+    .topbar a {
+      color: var(--muted); text-decoration: none; font-size: 13px;
+      padding: 6px 14px; border-radius: 8px; transition: .2s;
+    }
+    .topbar a:hover { background: var(--surface2); color: var(--text); }
+
+    .container { max-width: 1280px; margin: 0 auto; padding: 24px 32px; }
+
+    /* ── Status Cards ───────────────────────────── */
+    .status-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px; margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 18px;
+    }
+    .stat-card .label { font-size: 12px; color: var(--muted); text-transform: uppercase;
+                        letter-spacing: .5px; margin-bottom: 4px; }
+    .stat-card .value { font-size: 22px; font-weight: 600; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+           margin-right: 6px; vertical-align: middle; }
+    .dot.on { background: var(--green); }
+    .dot.off { background: var(--red); }
+
+    /* ── Tabs ────────────────────────────────────── */
+    .tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+    .tab {
+      padding: 10px 20px; border-radius: 10px 10px 0 0; cursor: pointer;
+      font-size: 14px; font-weight: 500; color: var(--muted);
+      background: var(--surface); border: 1px solid var(--border); border-bottom: none;
+      transition: .2s;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active {
+      color: var(--text); background: var(--surface2);
+      border-color: var(--accent);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── Outbound Call Form ──────────────────────── */
+    .panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 24px; margin-bottom: 20px;
+    }
+    .panel h2 { font-size: 16px; margin-bottom: 16px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group.full { grid-column: 1 / -1; }
+    .form-group label { font-size: 12px; color: var(--muted); text-transform: uppercase;
+                        letter-spacing: .5px; font-weight: 500; }
+    .form-group input, .form-group select, .form-group textarea {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 14px; color: var(--text); font-size: 14px; font-family: inherit;
+      outline: none; transition: border-color .2s;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      border-color: var(--accent);
+    }
+    .form-group textarea { resize: vertical; min-height: 60px; }
+    .form-group select option { background: var(--surface2); color: var(--text); }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 24px; border-radius: 10px; border: none;
+      font-size: 14px; font-weight: 600; cursor: pointer; transition: .2s;
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
+    }
+    .btn-primary:hover { opacity: .9; }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--accent); }
+
+    .form-actions { display: flex; gap: 12px; margin-top: 16px; align-items: center; }
+    .call-result {
+      font-size: 13px; padding: 8px 14px; border-radius: 8px; display: none;
+    }
+    .call-result.success { display: block; background: #10b98120; color: var(--green); }
+    .call-result.error { display: block; background: #ef444420; color: var(--red); }
+
+    /* ── Tables ──────────────────────────────────── */
+    .table-wrap {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+    }
+    .table-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+    }
+    .table-header h2 { font-size: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      text-align: left; padding: 12px 16px; font-size: 12px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .5px; font-weight: 500;
+      border-bottom: 1px solid var(--border); background: var(--surface2);
+    }
+    tbody td {
+      padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border);
+      vertical-align: top; max-width: 300px;
+    }
+    tbody tr:hover { background: var(--surface2); }
+    tbody tr:last-child td { border-bottom: none; }
+    .tag {
+      display: inline-block; padding: 2px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+    }
+    .tag.inbound { background: #3b82f620; color: var(--blue); }
+    .tag.outbound { background: #f59e0b20; color: var(--amber); }
+    .tag.yes { background: #10b98120; color: var(--green); }
+    .tag.no { background: #64748b20; color: #94a3b8; }
+    .transcript-text {
+      max-height: 80px; overflow: hidden; cursor: pointer;
+      transition: max-height .3s ease;
+    }
+    .transcript-text.expanded { max-height: 2000px; }
+    .expand-hint { font-size: 11px; color: var(--accent); margin-top: 4px; cursor: pointer; }
+
+    .empty-state {
+      padding: 48px 20px; text-align: center; color: var(--muted);
+    }
+    .empty-state p { margin-top: 8px; font-size: 14px; }
+
+    .loading { text-align: center; padding: 32px; color: var(--muted); font-size: 14px; }
+
+    /* ── Active Calls ────────────────────────────── */
+    .call-card {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px; margin-bottom: 10px;
+      display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center;
+    }
+    .call-pulse {
+      width: 12px; height: 12px; border-radius: 50%; background: var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: .4; }
+    }
+    .call-info { font-size: 13px; }
+    .call-info strong { font-size: 14px; }
+    .call-info .detail { color: var(--muted); margin-top: 2px; }
+
+    /* ── Responsive ──────────────────────────────── */
+    @media (max-width: 768px) {
+      .container { padding: 16px; }
+      .topbar { padding: 12px 16px; }
+      .form-grid { grid-template-columns: 1fr; }
+      .status-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>{{salon_name}}</h1>
+    <span class="badge">Live</span>
+    <div class="spacer"></div>
+    <a href="/docs">API Docs</a>
+    <a href="/health">Health</a>
+  </div>
+
+  <div class="container">
+    <!-- Status Cards -->
+    <div class="status-grid" id="statusCards">
+      <div class="stat-card">
+        <div class="label">Active Calls</div>
+        <div class="value" id="activeCalls">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Twilio VoIP</div>
+        <div class="value"><span class="dot {{twilio_dot}}"></span> {{twilio_label}}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Gemini AI</div>
+        <div class="value"><span class="dot {{gemini_dot}}"></span> {{gemini_label}}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Google Sheets</div>
+        <div class="value"><span class="dot {{sheets_dot}}"></span> {{sheets_label}}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">SendGrid Email</div>
+        <div class="value"><span class="dot {{email_dot}}"></span> {{email_label}}</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tab active" data-tab="outbound">Outbound Calls</div>
+      <div class="tab" data-tab="transcripts">Call Transcripts</div>
+      <div class="tab" data-tab="appointments">Appointments</div>
+      <div class="tab" data-tab="active">Active Calls</div>
+    </div>
+
+    <!-- ── Tab: Outbound Calls ─────────────────── -->
+    <div class="tab-content active" id="tab-outbound">
+      <div class="panel">
+        <h2>Initiate Outbound Call</h2>
+        <form id="outboundForm">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Phone Number *</label>
+              <input type="tel" id="callPhone" placeholder="+11234567890" required>
+            </div>
+            <div class="form-group">
+              <label>Customer Name</label>
+              <input type="text" id="callName" placeholder="Jane Doe">
+            </div>
+            <div class="form-group">
+              <label>Purpose</label>
+              <select id="callPurpose">
+                <option value="appointment_confirmation">Appointment Confirmation</option>
+                <option value="reminder">Appointment Reminder</option>
+                <option value="follow_up">Follow-up</option>
+                <option value="custom">Custom Message</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Service</label>
+              <select id="callService">
+                <option value="">— Select service —</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Appointment Date</label>
+              <input type="date" id="callDate">
+            </div>
+            <div class="form-group">
+              <label>Appointment Time</label>
+              <input type="time" id="callTime">
+            </div>
+            <div class="form-group">
+              <label>Technician</label>
+              <select id="callTechnician">
+                <option value="">— No preference —</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Custom Message</label>
+              <textarea id="callCustomMsg" placeholder="Optional message for custom calls..."></textarea>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="callBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              Place Call
+            </button>
+            <div class="call-result" id="callResult"></div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Tab: Call Transcripts ────────────────── -->
+    <div class="tab-content" id="tab-transcripts">
+      <div class="table-wrap">
+        <div class="table-header">
+          <h2>Call Transcripts</h2>
+          <button class="btn btn-secondary" onclick="loadTranscripts()">Refresh</button>
+        </div>
+        <div id="transcriptsBody">
+          <div class="loading">Loading transcripts...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Appointments ───────────────────── -->
+    <div class="tab-content" id="tab-appointments">
+      <div class="table-wrap">
+        <div class="table-header">
+          <h2>Appointments</h2>
+          <button class="btn btn-secondary" onclick="loadAppointments()">Refresh</button>
+        </div>
+        <div id="appointmentsBody">
+          <div class="loading">Loading appointments...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Active Calls ───────────────────── -->
+    <div class="tab-content" id="tab-active">
+      <div class="panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h2>Active Calls</h2>
+          <button class="btn btn-secondary" onclick="loadActiveCalls()">Refresh</button>
+        </div>
+        <div id="activeCallsBody">
+          <div class="loading">Checking for active calls...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Tab switching ──────────────────────────────
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+
+        // Lazy-load data
+        if (tab.dataset.tab === 'transcripts') loadTranscripts();
+        if (tab.dataset.tab === 'appointments') loadAppointments();
+        if (tab.dataset.tab === 'active') loadActiveCalls();
+      });
+    });
+
+    // ── Outbound Call Form ─────────────────────────
+    const form = document.getElementById('outboundForm');
+    const callBtn = document.getElementById('callBtn');
+    const callResult = document.getElementById('callResult');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      callBtn.disabled = true;
+      callBtn.innerHTML = 'Calling...';
+      callResult.className = 'call-result';
+      callResult.style.display = 'none';
+
+      const body = {
+        phone_number: document.getElementById('callPhone').value,
+        customer_name: document.getElementById('callName').value || null,
+        purpose: document.getElementById('callPurpose').value,
+        custom_message: document.getElementById('callCustomMsg').value || null,
+        appointment_details: {}
+      };
+
+      const svc = document.getElementById('callService').value;
+      const dt = document.getElementById('callDate').value;
+      const tm = document.getElementById('callTime').value;
+      const tech = document.getElementById('callTechnician').value;
+      if (svc) body.appointment_details.service = svc;
+      if (dt) body.appointment_details.date = dt;
+      if (tm) body.appointment_details.time = tm;
+      if (tech) body.appointment_details.technician = tech;
+      if (Object.keys(body.appointment_details).length === 0) body.appointment_details = null;
+
+      try {
+        const res = await fetch('/api/outbound-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (res.ok) {
+          callResult.className = 'call-result success';
+          callResult.textContent = `Call initiated — SID: ${data.call_sid} (${data.status})`;
+        } else {
+          throw new Error(data.error || data.detail || JSON.stringify(data));
+        }
+      } catch (err) {
+        callResult.className = 'call-result error';
+        callResult.textContent = `Failed: ${err.message}`;
+      } finally {
+        callBtn.disabled = false;
+        callBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg> Place Call`;
+      }
+    });
+
+    // ── Load Transcripts ───────────────────────────
+    let transcriptsLoaded = false;
+    async function loadTranscripts() {
+      const container = document.getElementById('transcriptsBody');
+      container.innerHTML = '<div class="loading">Loading transcripts...</div>';
+      try {
+        const res = await fetch('/api/transcripts?limit=50');
+        const data = await res.json();
+        if (!data.transcripts || data.transcripts.length === 0) {
+          container.innerHTML = `<div class="empty-state">
+            <p><strong>No transcripts yet</strong></p>
+            <p>Call transcripts will appear here after calls are completed.</p>
+          </div>`;
+          return;
+        }
+        let html = `<table><thead><tr>
+          <th>Date</th><th>Type</th><th>From</th><th>To</th>
+          <th>Duration</th><th>Booked</th><th>Transcript</th>
+        </tr></thead><tbody>`;
+        data.transcripts.forEach(t => {
+          const typeClass = (t['Call Type'] || '').toLowerCase();
+          const bookedClass = (t['Appointment Booked'] || '').toLowerCase();
+          const transcript = t['Transcript'] || '—';
+          const truncated = transcript.length > 120;
+          html += `<tr>
+            <td>${t['Date'] || '—'}</td>
+            <td><span class="tag ${typeClass}">${t['Call Type'] || '—'}</span></td>
+            <td>${t['From'] || '—'}</td>
+            <td>${t['To'] || '—'}</td>
+            <td>${t['Duration (s)'] ? t['Duration (s)'] + 's' : '—'}</td>
+            <td><span class="tag ${bookedClass}">${t['Appointment Booked'] || '—'}</span></td>
+            <td>
+              <div class="transcript-text" onclick="this.classList.toggle('expanded')">${escapeHtml(transcript)}</div>
+              ${truncated ? '<div class="expand-hint" onclick="this.previousElementSibling.classList.toggle(\'expanded\')">Click to expand</div>' : ''}
+            </td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+        transcriptsLoaded = true;
+      } catch (err) {
+        container.innerHTML = `<div class="empty-state">
+          <p><strong>Could not load transcripts</strong></p>
+          <p>${escapeHtml(err.message)}</p>
+        </div>`;
+      }
+    }
+
+    // ── Load Appointments ──────────────────────────
+    let appointmentsLoaded = false;
+    async function loadAppointments() {
+      const container = document.getElementById('appointmentsBody');
+      container.innerHTML = '<div class="loading">Loading appointments...</div>';
+      try {
+        const res = await fetch('/api/appointments?limit=50');
+        const data = await res.json();
+        if (!data.appointments || data.appointments.length === 0) {
+          container.innerHTML = `<div class="empty-state">
+            <p><strong>No appointments yet</strong></p>
+            <p>Booked appointments will appear here.</p>
+          </div>`;
+          return;
+        }
+        let html = `<table><thead><tr>
+          <th>Booked</th><th>Customer</th><th>Phone</th><th>Email</th>
+          <th>Service</th><th>Technician</th><th>Date</th><th>Time</th><th>Status</th>
+        </tr></thead><tbody>`;
+        data.appointments.forEach(a => {
+          html += `<tr>
+            <td>${a['Date Booked'] || '—'}</td>
+            <td><strong>${escapeHtml(a['Full Name'] || '—')}</strong></td>
+            <td>${a['Phone Number'] || '—'}</td>
+            <td>${escapeHtml(a['Email'] || '—')}</td>
+            <td>${escapeHtml(a['Service'] || '—')}</td>
+            <td>${escapeHtml(a['Preferred Technician'] || '—')}</td>
+            <td>${a['Appointment Date'] || '—'}</td>
+            <td>${a['Appointment Time'] || '—'}</td>
+            <td><span class="tag yes">${a['Status'] || '—'}</span></td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+        appointmentsLoaded = true;
+      } catch (err) {
+        container.innerHTML = `<div class="empty-state">
+          <p><strong>Could not load appointments</strong></p>
+          <p>${escapeHtml(err.message)}</p>
+        </div>`;
+      }
+    }
+
+    // ── Load Active Calls ──────────────────────────
+    async function loadActiveCalls() {
+      const container = document.getElementById('activeCallsBody');
+      container.innerHTML = '<div class="loading">Checking for active calls...</div>';
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        document.getElementById('activeCalls').textContent = data.active_calls || 0;
+        if (!data.calls || data.calls.length === 0) {
+          container.innerHTML = `<div class="empty-state">
+            <p><strong>No active calls</strong></p>
+            <p>Live calls will appear here in real time.</p>
+          </div>`;
+          return;
+        }
+        let html = '';
+        data.calls.forEach(c => {
+          const collected = c.data_collected || {};
+          const fields = Object.entries(collected)
+            .filter(([k, v]) => v)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(' · ');
+          html += `<div class="call-card">
+            <div class="call-pulse"></div>
+            <div class="call-info">
+              <strong>${c.from || 'Unknown'}</strong> — ${c.type}
+              <div class="detail">State: ${c.state} · ${c.duration_seconds}s</div>
+              ${fields ? `<div class="detail">${escapeHtml(fields)}</div>` : ''}
+            </div>
+            <span class="tag ${c.type}">${c.type}</span>
+          </div>`;
+        });
+        container.innerHTML = html;
+      } catch (err) {
+        container.innerHTML = `<div class="empty-state">
+          <p><strong>Could not check status</strong></p>
+          <p>${escapeHtml(err.message)}</p>
+        </div>`;
+      }
+    }
+
+    // ── Populate dropdowns ─────────────────────────
+    async function loadDropdowns() {
+      try {
+        const [svcRes, techRes] = await Promise.all([
+          fetch('/api/services'), fetch('/api/technicians')
+        ]);
+        const svcData = await svcRes.json();
+        const techData = await techRes.json();
+
+        const svcSelect = document.getElementById('callService');
+        (svcData.services || []).forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.name;
+          opt.textContent = `${s.name} (${s.category}) — ${s.price}`;
+          svcSelect.appendChild(opt);
+        });
+
+        const techSelect = document.getElementById('callTechnician');
+        (techData.technicians || []).forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.name;
+          opt.textContent = `${t.name} — ${t.title}`;
+          techSelect.appendChild(opt);
+        });
+      } catch (err) {
+        console.warn('Could not load dropdowns:', err);
+      }
+    }
+
+    // ── Utility ────────────────────────────────────
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ── Init ───────────────────────────────────────
+    loadDropdowns();
+    loadActiveCalls();
+
+    // Auto-refresh active calls every 10s
+    setInterval(loadActiveCalls, 10000);
+  </script>
+</body>
+</html>

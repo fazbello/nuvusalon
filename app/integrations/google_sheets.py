@@ -157,6 +157,28 @@ def log_transcript(record: TranscriptRecord) -> None:
     logger.info("Logged transcript for call %s", record.call_sid)
 
 
+def get_transcripts(limit: int = 50) -> list[dict]:
+    """Fetch recent transcripts from the Transcripts tab (newest first)."""
+    settings = get_settings()
+    client = _get_client()
+    spreadsheet = client.open_by_key(settings.google_sheet_id)
+    ws = _get_or_create_sheet(spreadsheet, TRANSCRIPTS_TAB, TRANSCRIPTS_HEADERS)
+
+    all_rows = ws.get_all_records()
+    return list(reversed(all_rows))[:limit]
+
+
+def get_appointments(limit: int = 50) -> list[dict]:
+    """Fetch recent appointments from the Appointments tab (newest first)."""
+    settings = get_settings()
+    client = _get_client()
+    spreadsheet = client.open_by_key(settings.google_sheet_id)
+    ws = _get_or_create_sheet(spreadsheet, APPOINTMENTS_TAB, APPOINTMENTS_HEADERS)
+
+    all_rows = ws.get_all_records()
+    return list(reversed(all_rows))[:limit]
+
+
 def _upsert_customer(
     spreadsheet: gspread.Spreadsheet,
     appointment: AppointmentData,
