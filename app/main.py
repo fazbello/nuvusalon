@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.ai.gemini_agent import research
 from app.config import get_settings
@@ -84,6 +84,87 @@ app.add_middleware(
 
 # ── Voice Routes (Twilio webhooks) ─────────────────────────────
 app.include_router(voice_router)
+
+
+# ── Root Landing Page ──────────────────────────────────────────
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """Landing page with system status and API docs link."""
+    settings = get_settings()
+    return f"""\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{settings.salon_name} — Voice Agent</title>
+  <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           background: #0f0f1a; color: #e0e0e0; min-height: 100vh;
+           display: flex; align-items: center; justify-content: center; }}
+    .card {{ background: #1a1a2e; border-radius: 16px; padding: 48px;
+             max-width: 520px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }}
+    .badge {{ display: inline-block; background: #10b981; color: #fff; font-size: 12px;
+              font-weight: 600; padding: 4px 12px; border-radius: 20px; margin-bottom: 16px;
+              text-transform: uppercase; letter-spacing: 0.5px; }}
+    h1 {{ font-size: 28px; margin-bottom: 8px;
+          background: linear-gradient(135deg, #667eea, #764ba2);
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
+    .sub {{ color: #888; margin-bottom: 32px; font-size: 15px; }}
+    .status {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 32px; }}
+    .status-item {{ background: #16213e; padding: 14px; border-radius: 10px; }}
+    .status-item .label {{ font-size: 12px; color: #667; text-transform: uppercase;
+                           letter-spacing: 0.5px; margin-bottom: 4px; }}
+    .status-item .value {{ font-size: 14px; font-weight: 500; }}
+    .dot {{ display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+            margin-right: 6px; vertical-align: middle; }}
+    .dot.on {{ background: #10b981; }}
+    .dot.off {{ background: #ef4444; }}
+    .links {{ display: flex; gap: 12px; }}
+    .links a {{ flex: 1; text-align: center; padding: 12px; border-radius: 10px;
+                text-decoration: none; font-weight: 500; font-size: 14px;
+                transition: opacity 0.2s; }}
+    .links a:hover {{ opacity: 0.85; }}
+    .links .primary {{ background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }}
+    .links .secondary {{ background: #16213e; color: #a0a0b8; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">Live</span>
+    <h1>{settings.salon_name}</h1>
+    <p class="sub">AI Voice Agent &mdash; Appointment Booking System</p>
+    <div class="status">
+      <div class="status-item">
+        <div class="label">Twilio VoIP</div>
+        <div class="value"><span class="dot {'on' if settings.twilio_account_sid else 'off'}"></span>
+          {'Connected' if settings.twilio_account_sid else 'Not configured'}</div>
+      </div>
+      <div class="status-item">
+        <div class="label">Gemini AI</div>
+        <div class="value"><span class="dot {'on' if settings.gemini_api_key else 'off'}"></span>
+          {'Connected' if settings.gemini_api_key else 'Not configured'}</div>
+      </div>
+      <div class="status-item">
+        <div class="label">Google Sheets</div>
+        <div class="value"><span class="dot {'on' if settings.google_sheet_id else 'off'}"></span>
+          {'Connected' if settings.google_sheet_id else 'Not configured'}</div>
+      </div>
+      <div class="status-item">
+        <div class="label">Email (SendGrid)</div>
+        <div class="value"><span class="dot {'on' if settings.sendgrid_api_key else 'off'}"></span>
+          {'Connected' if settings.sendgrid_api_key else 'Not configured'}</div>
+      </div>
+    </div>
+    <div class="links">
+      <a href="/docs" class="primary">API Docs</a>
+      <a href="/health" class="secondary">Health Check</a>
+    </div>
+  </div>
+</body>
+</html>"""
 
 
 # ── Health Check ───────────────────────────────────────────────
