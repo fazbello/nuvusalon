@@ -1,0 +1,3 @@
+# Ignore everything inside .tmp/ except this file
+*
+!.gitignore

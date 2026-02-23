@@ -1,0 +1,30 @@
+# Environment & secrets
+.env
+credentials.json
+token.json
+
+# Intermediate / temp files — contents ignored via .tmp/.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
