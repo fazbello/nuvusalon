@@ -2,8 +2,8 @@
 """
 Execution script: Test an outbound call.
 
-Initiates a test outbound call to verify Twilio + Gemini integration
-is working end-to-end.
+Initiates a test outbound call to verify the voice provider + Gemini
+integration is working end-to-end.
 
 Usage:
     python execution/test_outbound_call.py +11234567890
@@ -47,12 +47,16 @@ def main():
     try:
         result = initiate_outbound_call(request)
         print(f"Call initiated successfully!")
+        print(f"  Provider: {result.get('provider', 'unknown')}")
         print(f"  Call SID: {result['call_sid']}")
         print(f"  Status: {result['status']}")
     except Exception as exc:
         print(f"ERROR: {exc}")
         print()
-        print("Check that TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER are set.")
+        print("Check that VOICE_PROVIDER is set and its credentials are configured.")
+        print("  Twilio: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER")
+        print("  Telnyx: TELNYX_API_KEY, TELNYX_PHONE_NUMBER, TELNYX_APP_ID")
+        print("  VAPI:   VAPI_API_KEY, VAPI_PHONE_NUMBER, VAPI_PHONE_NUMBER_ID")
         sys.exit(1)
 
 

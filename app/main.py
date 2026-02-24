@@ -105,7 +105,16 @@ async def root():
     def _dot(val: str) -> tuple[str, str]:
         return ("on", "Connected") if val else ("off", "Not configured")
 
-    tw_dot, tw_lbl = _dot(settings.twilio_account_sid)
+    from app.voice.providers import get_provider
+    try:
+        provider = get_provider()
+        voip_configured = provider.is_configured()
+        voip_name = provider.name
+    except Exception:
+        voip_configured = False
+        voip_name = settings.voice_provider.title()
+
+    vp_dot, vp_lbl = ("on", "Connected") if voip_configured else ("off", "Not configured")
     gm_dot, gm_lbl = _dot(settings.gemini_api_key)
     sh_dot, sh_lbl = _dot(settings.google_sheet_id)
     em_dot, em_lbl = _dot(settings.sendgrid_api_key)
@@ -113,8 +122,9 @@ async def root():
     html = (
         template
         .replace("{{salon_name}}", settings.salon_name)
-        .replace("{{twilio_dot}}", tw_dot)
-        .replace("{{twilio_label}}", tw_lbl)
+        .replace("{{voip_name}}", voip_name)
+        .replace("{{voip_dot}}", vp_dot)
+        .replace("{{voip_label}}", vp_lbl)
         .replace("{{gemini_dot}}", gm_dot)
         .replace("{{gemini_label}}", gm_lbl)
         .replace("{{sheets_dot}}", sh_dot)
@@ -131,10 +141,19 @@ async def root():
 async def health():
     """Railway health check endpoint."""
     settings = get_settings()
+    from app.voice.providers import get_provider
+    try:
+        provider = get_provider()
+        voip_ok = provider.is_configured()
+        voip_name = provider.name
+    except Exception:
+        voip_ok = False
+        voip_name = settings.voice_provider
     return {
         "status": "healthy",
         "service": settings.app_name,
-        "twilio_configured": bool(settings.twilio_account_sid),
+        "voice_provider": voip_name,
+        "voice_configured": voip_ok,
         "gemini_configured": bool(settings.gemini_api_key),
         "sheets_configured": bool(settings.google_sheet_id),
         "email_configured": bool(settings.sendgrid_api_key),

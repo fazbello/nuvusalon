@@ -1,12 +1,13 @@
 """
 FastAPI router for all voice / VoIP endpoints.
 
-Twilio webhooks are regular POST requests with form data.
+Provider-agnostic: works with Twilio (form-data), Telnyx (form-data),
+and VAPI (JSON). The active provider determines the response content type.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Form, Request, Response
+from fastapi import APIRouter, Request, Response
 
 from app.voice.inbound import handle_call_status, handle_inbound_call, handle_speech_input
 from app.voice.outbound import (
@@ -14,39 +15,54 @@ from app.voice.outbound import (
     handle_outbound_speech,
     initiate_outbound_call,
 )
+from app.voice.providers import get_provider
 from app.models.appointment import OutboundCallRequest
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 
 
-def _twiml_response(twiml: str) -> Response:
-    """Return TwiML with correct content type."""
-    return Response(content=twiml, media_type="application/xml")
+async def _parse_request(request: Request) -> dict:
+    """
+    Extract webhook data from any provider.
+    Twilio/Telnyx send form-encoded POST data.
+    VAPI sends JSON.
+    """
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        return await request.json()
+    form = await request.form()
+    return dict(form)
+
+
+def _provider_response(body: str) -> Response:
+    """Return a response with the active provider's content type."""
+    provider = get_provider()
+    return Response(content=body, media_type=provider.content_type)
 
 
 # ── Inbound ────────────────────────────────────────────────────
 
 @router.post("/inbound")
 async def inbound_call(request: Request):
-    """Twilio webhook: incoming call just arrived."""
-    form = await request.form()
-    twiml = await handle_inbound_call(dict(form))
-    return _twiml_response(twiml)
+    """Webhook: incoming call just arrived."""
+    data = await _parse_request(request)
+    response_body = await handle_inbound_call(data)
+    return _provider_response(response_body)
 
 
 @router.post("/process-speech")
 async def process_speech(request: Request):
-    """Twilio webhook: customer spoke during inbound call."""
-    form = await request.form()
-    twiml = await handle_speech_input(dict(form))
-    return _twiml_response(twiml)
+    """Webhook: customer spoke during inbound call."""
+    data = await _parse_request(request)
+    response_body = await handle_speech_input(data)
+    return _provider_response(response_body)
 
 
 @router.post("/status")
 async def call_status(request: Request):
-    """Twilio status callback: call state changed."""
-    form = await request.form()
-    await handle_call_status(dict(form))
+    """Status callback: call state changed."""
+    data = await _parse_request(request)
+    await handle_call_status(data)
     return Response(status_code=204)
 
 
@@ -76,15 +92,15 @@ async def trigger_outbound_call(request: OutboundCallRequest):
 
 @router.post("/outbound-answer")
 async def outbound_answer(request: Request):
-    """Twilio webhook: outbound call was answered."""
-    form = await request.form()
-    twiml = await handle_outbound_answer(dict(form))
-    return _twiml_response(twiml)
+    """Webhook: outbound call was answered."""
+    data = await _parse_request(request)
+    response_body = await handle_outbound_answer(data)
+    return _provider_response(response_body)
 
 
 @router.post("/outbound-process")
 async def outbound_process(request: Request):
-    """Twilio webhook: customer spoke during outbound call."""
-    form = await request.form()
-    twiml = await handle_outbound_speech(dict(form))
-    return _twiml_response(twiml)
+    """Webhook: customer spoke during outbound call."""
+    data = await _parse_request(request)
+    response_body = await handle_outbound_speech(data)
+    return _provider_response(response_body)

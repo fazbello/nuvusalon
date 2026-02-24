@@ -21,10 +21,24 @@ class Settings(BaseSettings):
     debug: bool = False
     base_url: str = ""  # Public Railway URL, e.g. https://myapp.up.railway.app
 
+    # ── Voice Provider ─────────────────────────────────────────
+    voice_provider: str = "twilio"  # "twilio" | "telnyx" | "vapi"
+
     # ── Twilio VoIP ────────────────────────────────────────────
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_phone_number: str = ""  # Your Twilio number in E.164
+
+    # ── Telnyx VoIP ────────────────────────────────────────────
+    telnyx_api_key: str = ""
+    telnyx_phone_number: str = ""  # Your Telnyx number in E.164
+    telnyx_app_id: str = ""  # TeXML Application ID
+
+    # ── VAPI Voice AI ──────────────────────────────────────────
+    vapi_api_key: str = ""
+    vapi_phone_number: str = ""  # Display number
+    vapi_phone_number_id: str = ""  # VAPI phone number resource ID
+    vapi_server_secret: str = ""  # Webhook signature secret
 
     # ── Gemini AI ──────────────────────────────────────────────
     gemini_api_key: str = ""
