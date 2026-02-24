@@ -133,8 +133,16 @@ async def trigger_outbound_call(outbound_request: OutboundCallRequest, request: 
             }
         }
     """
-    result = initiate_outbound_call(outbound_request, request_host=request.headers.get("host"))
-    return result
+    from fastapi.responses import JSONResponse
+    try:
+        result = initiate_outbound_call(outbound_request, request_host=request.headers.get("host"))
+        return result
+    except Exception as exc:
+        logger.error("Failed to initiate outbound call: %s\n%s", exc, traceback.format_exc())
+        return JSONResponse(
+            status_code=400,
+            content={"error": str(exc), "detail": "Check BASE_URL and Twilio credentials."},
+        )
 
 
 @router.post("/outbound-answer")

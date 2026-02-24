@@ -47,8 +47,35 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
+    import os
+    from app.ai.gemini_agent import _FALLBACK_MODEL, _KNOWN_MODELS
+
     settings = get_settings()
     logger.info("Starting %s", settings.app_name)
+
+    # ── Startup configuration checks ──────────────────────────
+    effective_base = get_base_url()
+    if not effective_base:
+        logger.error(
+            "STARTUP WARNING: BASE_URL is not configured and cannot be auto-detected. "
+            "Outbound calls will fail. Add BASE_URL=https://your-app.up.railway.app "
+            "in Railway > Variables."
+        )
+    else:
+        logger.info("Base URL: %s", effective_base)
+
+    if not settings.gemini_api_key:
+        logger.error("STARTUP WARNING: GEMINI_API_KEY is not set. AI responses will fail.")
+
+    if settings.gemini_model not in _KNOWN_MODELS:
+        logger.warning(
+            "STARTUP WARNING: gemini_model=%r is not a known valid model. "
+            "Will fall back to %s. Fix via dashboard Configure > Voice & AI.",
+            settings.gemini_model, _FALLBACK_MODEL,
+        )
+
+    if not settings.twilio_account_sid and settings.voice_provider == "twilio":
+        logger.warning("STARTUP WARNING: TWILIO_ACCOUNT_SID is not set.")
 
     # Initialize spreadsheet tabs
     if settings.google_sheet_id and settings.get_google_credentials_info():
@@ -57,6 +84,11 @@ async def lifespan(app: FastAPI):
             logger.info("Google Sheet ready: %s", url)
         except Exception as exc:
             logger.warning("Could not set up Google Sheet: %s", exc)
+    elif settings.google_sheet_id and not settings.get_google_credentials_info():
+        logger.warning(
+            "STARTUP WARNING: GOOGLE_SHEET_ID is set but no Google credentials found. "
+            "Set GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS."
+        )
 
     # Start reminder scheduler
     try:
@@ -316,7 +348,14 @@ async def api_outbound_call(outbound_request: OutboundCallRequest, request: Requ
     Useful for admin dashboards and automation.
     """
     from app.voice.outbound import initiate_outbound_call
-    return initiate_outbound_call(outbound_request, request_host=request.headers.get("host"))
+    try:
+        return initiate_outbound_call(outbound_request, request_host=request.headers.get("host"))
+    except Exception as exc:
+        logger.error("Outbound call failed: %s", exc)
+        return JSONResponse(
+            status_code=400,
+            content={"error": str(exc), "detail": "Check BASE_URL and Twilio/provider credentials."},
+        )
 
 
 @app.get("/api/transcripts")
