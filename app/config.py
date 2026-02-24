@@ -6,11 +6,14 @@ All secrets and tunables live here — nothing is hardcoded.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -100,3 +103,49 @@ def get_settings() -> Settings:
     if overrides:
         base = base.model_copy(update=overrides)
     return base
+
+
+def get_base_url(request_host: str | None = None) -> str:
+    """
+    Return the public base URL used for constructing Twilio webhook callbacks.
+
+    Resolution order (first non-empty wins):
+      1. BASE_URL env var / settings.base_url
+      2. RAILWAY_PUBLIC_DOMAIN env var (Railway sets this automatically)
+      3. request_host extracted from the incoming HTTP request
+      4. Empty string — logs a clear error so the operator knows what to fix
+
+    The single most common cause of "We're sorry, an application error has occurred"
+    on outbound calls is BASE_URL not being set.
+    """
+    settings = get_settings()
+
+    if settings.base_url:
+        return settings.base_url.rstrip("/")
+
+    # Railway automatically injects RAILWAY_PUBLIC_DOMAIN (e.g. "myapp.up.railway.app")
+    railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
+    if railway_domain:
+        url = f"https://{railway_domain.rstrip('/')}"
+        logger.info(
+            "BASE_URL not set — auto-detected Railway URL: %s  "
+            "Set BASE_URL=%s in Railway variables to silence this log.",
+            url, url,
+        )
+        return url
+
+    if request_host:
+        url = f"https://{request_host.rstrip('/')}"
+        logger.warning(
+            "BASE_URL and RAILWAY_PUBLIC_DOMAIN not set — "
+            "using request Host header: %s. Add BASE_URL to Railway env vars.",
+            url,
+        )
+        return url
+
+    logger.error(
+        "BASE_URL is not configured and RAILWAY_PUBLIC_DOMAIN is not available. "
+        "Outbound call webhook URLs will be broken. "
+        "Fix: add BASE_URL=https://your-app.up.railway.app in Railway > Variables."
+    )
+    return ""

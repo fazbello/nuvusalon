@@ -100,8 +100,9 @@ _TEMPLATE_PATH = Path(__file__).parent / "templates" / "dashboard.html"
 
 
 @app.get("/", response_class=HTMLResponse)
-async def root():
+async def root(request: Request):
     """Admin dashboard: outbound calls, transcripts, appointments, live status."""
+    import os
     settings = get_settings()
     template = _TEMPLATE_PATH.read_text()
 
@@ -122,6 +123,20 @@ async def root():
     sh_dot, sh_lbl = _dot(settings.google_sheet_id)
     em_dot, em_lbl = _dot(settings.sendgrid_api_key)
 
+    # Detect effective base URL for the warning banner
+    effective_base = (
+        settings.base_url
+        or os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+        or request.headers.get("host", "")
+    )
+    base_url_warning = "" if effective_base else (
+        '<div style="background:#f59e0b20;border:1px solid #f59e0b;border-radius:10px;'
+        'padding:14px 20px;margin-bottom:20px;color:#f59e0b;font-size:13px;">'
+        '<strong>&#9888; BASE_URL not configured</strong> — Outbound call webhooks will fail. '
+        'Add <code style="background:#0005;padding:2px 6px;border-radius:4px;">BASE_URL=https://your-app.up.railway.app</code> '
+        'in Railway &rsaquo; Variables.</div>'
+    )
+
     html = (
         template
         .replace("{{salon_name}}", settings.salon_name)
@@ -134,6 +149,7 @@ async def root():
         .replace("{{sheets_label}}", sh_lbl)
         .replace("{{email_dot}}", em_dot)
         .replace("{{email_label}}", em_lbl)
+        .replace("{{base_url_warning}}", base_url_warning)
     )
     return HTMLResponse(content=html)
 
@@ -220,13 +236,13 @@ async def research_endpoint(question: str):
 
 
 @app.post("/api/outbound-call")
-async def api_outbound_call(request: OutboundCallRequest):
+async def api_outbound_call(outbound_request: OutboundCallRequest, request: Request):
     """
     Initiate an outbound call (alias for /voice/outbound-call).
     Useful for admin dashboards and automation.
     """
     from app.voice.outbound import initiate_outbound_call
-    return initiate_outbound_call(request)
+    return initiate_outbound_call(outbound_request, request_host=request.headers.get("host"))
 
 
 @app.get("/api/transcripts")

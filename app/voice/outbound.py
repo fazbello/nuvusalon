@@ -12,7 +12,7 @@ import json
 import logging
 
 from app.ai.gemini_agent import get_outbound_response
-from app.config import get_settings
+from app.config import get_base_url, get_settings
 from app.models.appointment import CallType, OutboundCallRequest, TranscriptRecord
 from app.integrations.google_sheets import log_transcript
 from app.voice.providers import get_provider
@@ -25,15 +25,17 @@ from app.voice.session import (
 logger = logging.getLogger(__name__)
 
 
-def initiate_outbound_call(request: OutboundCallRequest) -> dict:
+def initiate_outbound_call(request: OutboundCallRequest, request_host: str | None = None) -> dict:
     """
     Start an outbound call via the configured provider.
     Returns the call SID and status.
+
+    request_host is the HTTP Host header so webhook URLs can be built
+    correctly when BASE_URL is not set in the environment.
     """
     provider = get_provider()
-    settings = get_settings()
 
-    base = settings.base_url.rstrip("/")
+    base = get_base_url(request_host)
     answer_url = f"{base}/voice/outbound-answer"
     status_url = f"{base}/voice/status"
 
@@ -81,6 +83,7 @@ async def handle_outbound_answer(form_data: dict) -> str:
     provider = get_provider()
     wh = provider.parse_webhook(form_data)
     settings = get_settings()
+    base = get_base_url()
 
     session = get_session(wh.call_sid)
     if not session:
@@ -100,8 +103,8 @@ async def handle_outbound_answer(form_data: dict) -> str:
 
     return provider.build_gather(
         message=agent_response.message,
-        action_url="/voice/outbound-process",
-        timeout_url="/voice/outbound-answer",
+        action_url=f"{base}/voice/outbound-process",
+        timeout_url=f"{base}/voice/outbound-answer",
         timeout_message="I didn't hear a response. I'll try again.",
     )
 
@@ -113,6 +116,7 @@ async def handle_outbound_speech(form_data: dict) -> str:
     provider = get_provider()
     wh = provider.parse_webhook(form_data)
     settings = get_settings()
+    base = get_base_url()
 
     session = get_session(wh.call_sid)
     if not session:
@@ -141,8 +145,8 @@ async def handle_outbound_speech(form_data: dict) -> str:
     # Continue conversation
     return provider.build_gather(
         message=agent_response.message,
-        action_url="/voice/outbound-process",
-        timeout_url="/voice/outbound-answer",
+        action_url=f"{base}/voice/outbound-process",
+        timeout_url=f"{base}/voice/outbound-answer",
         timeout_message="I didn't catch that. Could you say that again?",
     )
 
