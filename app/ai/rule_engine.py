@@ -96,8 +96,9 @@ def _intent(text: str) -> str:
 def _extract_service(text: str) -> str | None:
     t = text.lower()
     for svc in get_services_flat():
-        if svc.lower() in t:
-            return svc
+        svc_name = svc["name"] if isinstance(svc, dict) else svc
+        if svc_name.lower() in t:
+            return svc_name
     return None
 
 
@@ -261,8 +262,9 @@ def _services_message() -> str:
     svcs = get_services_flat()
     if not svcs:
         return "We offer a range of hair and beauty services. What are you looking for?"
-    shown = svcs[:8]
-    extra = len(svcs) - 8
+    names = [s["name"] if isinstance(s, dict) else s for s in svcs]
+    shown = names[:8]
+    extra = len(names) - 8
     tail = f", and {extra} more" if extra > 0 else ""
     return f"We offer: {', '.join(shown)}{tail}. Which service would you like to book?"
 
@@ -422,8 +424,9 @@ def get_rule_based_inbound_response(
     if next_field == "service":
         svcs = get_services_flat()
         if svcs:
-            sample = ", ".join(svcs[:5])
-            extra = f" and more" if len(svcs) > 5 else ""
+            names = [s["name"] if isinstance(s, dict) else s for s in svcs]
+            sample = ", ".join(names[:5])
+            extra = f" and more" if len(names) > 5 else ""
             prompt = f"What service would you like? We offer {sample}{extra}."
 
     return AgentResponse(message=prompt, extracted_data=extracted, action="continue")
