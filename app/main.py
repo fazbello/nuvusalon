@@ -28,7 +28,10 @@ from app.knowledge_base.loader import (
     get_technicians,
     get_technicians_for_service,
     reload as reload_kb,
+    save_kb,
+    save_section,
 )
+from app.settings_store import EDITABLE_KEYS, load_overrides, save_overrides
 from app.models.appointment import OutboundCallRequest
 from app.scheduler.reminders import start_scheduler, stop_scheduler
 from app.voice.router import router as voice_router
@@ -254,3 +257,58 @@ async def api_setup_sheets():
         return {"status": "ok", "url": url}
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+# ── Configuration API (franchise dashboard) ───────────────────
+
+@app.get("/api/settings")
+async def get_operational_settings():
+    """Return current editable settings (overrides + effective values)."""
+    settings = get_settings()
+    overrides = load_overrides()
+    effective = {}
+    for key in sorted(EDITABLE_KEYS):
+        effective[key] = {
+            "value": getattr(settings, key, None),
+            "overridden": key in overrides,
+        }
+    return {"settings": effective, "overrides": overrides}
+
+
+@app.put("/api/settings")
+async def update_operational_settings(request: Request):
+    """Bulk-update editable settings."""
+    body = await request.json()
+    saved = save_overrides(body)
+    return {"status": "saved", "settings": saved}
+
+
+@app.get("/api/kb")
+async def api_get_kb():
+    """Return the full knowledge base."""
+    return get_full_kb()
+
+
+@app.put("/api/kb")
+async def api_put_kb(request: Request):
+    """Replace the entire knowledge base."""
+    body = await request.json()
+    kb = save_kb(body)
+    return {"status": "saved", "sections": list(kb.keys())}
+
+
+@app.get("/api/kb/{section}")
+async def api_get_kb_section(section: str):
+    """Return a single KB section (salon, locations, services, technicians, policies, faq)."""
+    kb = get_full_kb()
+    if section not in kb:
+        return JSONResponse(status_code=404, content={"error": f"Section '{section}' not found"})
+    return {section: kb[section]}
+
+
+@app.put("/api/kb/{section}")
+async def api_put_kb_section(section: str, request: Request):
+    """Update a single KB section."""
+    body = await request.json()
+    kb = save_section(section, body)
+    return {"status": "saved", "section": section, "sections": list(kb.keys())}

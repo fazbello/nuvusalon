@@ -93,4 +93,10 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    base = Settings()
+    # Apply non-secret overrides from config/salon_settings.json
+    from app.settings_store import load_overrides
+    overrides = load_overrides()
+    if overrides:
+        base = base.model_copy(update=overrides)
+    return base

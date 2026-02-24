@@ -33,8 +33,9 @@ def initiate_outbound_call(request: OutboundCallRequest) -> dict:
     provider = get_provider()
     settings = get_settings()
 
-    answer_url = f"{settings.base_url}/voice/outbound-answer"
-    status_url = f"{settings.base_url}/voice/status"
+    base = settings.base_url.rstrip("/")
+    answer_url = f"{base}/voice/outbound-answer"
+    status_url = f"{base}/voice/status"
 
     result = provider.initiate_call(
         to=request.phone_number,

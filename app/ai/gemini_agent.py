@@ -9,6 +9,7 @@ Uses the current `google-genai` SDK (not the deprecated `google-generativeai`).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import date
@@ -98,14 +99,8 @@ def _build_chat_history(
     return history, last_msg
 
 
-async def get_inbound_response(
-    conversation_history: list[dict],
-    appointment: AppointmentData,
-) -> AgentResponse:
-    """
-    Given the conversation so far and currently-collected data,
-    return the next thing to say plus any extracted fields.
-    """
+def _sync_inbound(conversation_history: list[dict], appointment: AppointmentData) -> AgentResponse:
+    """Synchronous Gemini call for inbound conversations (runs in thread pool)."""
     client = _get_client()
     settings = get_settings()
     system_prompt = _build_inbound_system_prompt(appointment)
@@ -128,12 +123,19 @@ async def get_inbound_response(
     return _parse_agent_response(response.text)
 
 
-async def get_outbound_response(
+async def get_inbound_response(
     conversation_history: list[dict],
-    purpose: str,
-    context: str,
+    appointment: AppointmentData,
 ) -> AgentResponse:
-    """Handle outbound call conversation turns."""
+    """
+    Given the conversation so far and currently-collected data,
+    return the next thing to say plus any extracted fields.
+    """
+    return await asyncio.to_thread(_sync_inbound, conversation_history, appointment)
+
+
+def _sync_outbound(conversation_history: list[dict], purpose: str, context: str) -> AgentResponse:
+    """Synchronous Gemini call for outbound conversations (runs in thread pool)."""
     client = _get_client()
     settings = get_settings()
     system_prompt = _build_outbound_system_prompt(purpose, context)
@@ -154,6 +156,15 @@ async def get_outbound_response(
 
     response = chat.send_message(last_msg)
     return _parse_agent_response(response.text)
+
+
+async def get_outbound_response(
+    conversation_history: list[dict],
+    purpose: str,
+    context: str,
+) -> AgentResponse:
+    """Handle outbound call conversation turns."""
+    return await asyncio.to_thread(_sync_outbound, conversation_history, purpose, context)
 
 
 async def research(question: str) -> str:

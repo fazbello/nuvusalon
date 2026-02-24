@@ -177,12 +177,76 @@
     .call-info strong { font-size: 14px; }
     .call-info .detail { color: var(--muted); margin-top: 2px; }
 
+    /* ── Configure Tab ────────────────────────────── */
+    .config-layout { display: flex; gap: 20px; min-height: 500px; }
+    .config-sidebar {
+      width: 200px; flex-shrink: 0; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 12px; padding: 8px;
+    }
+    .config-sidebar .nav-item {
+      display: block; padding: 10px 14px; border-radius: 8px; font-size: 13px;
+      color: var(--muted); cursor: pointer; transition: .2s; border: none;
+      background: none; width: 100%; text-align: left; font-family: inherit;
+    }
+    .config-sidebar .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .config-sidebar .nav-item.active {
+      background: var(--surface2); color: var(--accent); font-weight: 600;
+    }
+    .config-main { flex: 1; min-width: 0; }
+    .config-section { display: none; }
+    .config-section.active { display: block; }
+
+    .repeater { margin-bottom: 16px; }
+    .repeater-item {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px; margin-bottom: 10px; position: relative;
+    }
+    .repeater-item .remove-btn {
+      position: absolute; top: 10px; right: 10px; background: none;
+      border: 1px solid var(--border); color: var(--red); border-radius: 6px;
+      padding: 4px 10px; font-size: 12px; cursor: pointer; transition: .2s;
+    }
+    .repeater-item .remove-btn:hover { background: #ef444420; }
+    .add-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--surface2); border: 1px dashed var(--border);
+      color: var(--accent); border-radius: 8px; padding: 8px 16px;
+      font-size: 13px; cursor: pointer; transition: .2s; font-family: inherit;
+    }
+    .add-btn:hover { border-color: var(--accent); background: var(--surface); }
+
+    .checkbox-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .checkbox-grid label {
+      display: flex; align-items: center; gap: 6px; font-size: 13px;
+      color: var(--text); cursor: pointer; padding: 4px 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; transition: .2s;
+    }
+    .checkbox-grid label:has(input:checked) {
+      border-color: var(--accent); background: #667eea15;
+    }
+    .checkbox-grid input[type="checkbox"] { accent-color: var(--accent); }
+
+    .hours-grid { display: grid; grid-template-columns: 100px 1fr; gap: 8px; align-items: center; }
+    .hours-grid label { font-size: 13px; color: var(--muted); text-transform: capitalize; }
+
+    .save-bar {
+      display: flex; align-items: center; gap: 12px; margin-top: 20px;
+      padding-top: 16px; border-top: 1px solid var(--border);
+    }
+    .save-msg { font-size: 13px; }
+    .save-msg.ok { color: var(--green); }
+    .save-msg.err { color: var(--red); }
+
     /* ── Responsive ──────────────────────────────── */
     @media (max-width: 768px) {
       .container { padding: 16px; }
       .topbar { padding: 12px 16px; }
       .form-grid { grid-template-columns: 1fr; }
       .status-grid { grid-template-columns: 1fr 1fr; }
+      .config-layout { flex-direction: column; }
+      .config-sidebar { width: 100%; display: flex; gap: 4px; overflow-x: auto; padding: 4px; }
+      .config-sidebar .nav-item { white-space: nowrap; flex-shrink: 0; }
     }
   </style>
 </head>
@@ -226,6 +290,7 @@
       <div class="tab" data-tab="transcripts">Call Transcripts</div>
       <div class="tab" data-tab="appointments">Appointments</div>
       <div class="tab" data-tab="active">Active Calls</div>
+      <div class="tab" data-tab="configure">Configure</div>
     </div>
 
     <!-- ── Tab: Outbound Calls ─────────────────── -->
@@ -325,6 +390,191 @@
         </div>
       </div>
     </div>
+
+    <!-- ── Tab: Configure ────────────────────────── -->
+    <div class="tab-content" id="tab-configure">
+      <div class="config-layout">
+        <div class="config-sidebar">
+          <button class="nav-item active" data-section="cfg-salon">Salon Info</button>
+          <button class="nav-item" data-section="cfg-locations">Locations</button>
+          <button class="nav-item" data-section="cfg-services">Services</button>
+          <button class="nav-item" data-section="cfg-team">Team</button>
+          <button class="nav-item" data-section="cfg-policies">Policies</button>
+          <button class="nav-item" data-section="cfg-faq">FAQ</button>
+          <button class="nav-item" data-section="cfg-voice">Voice & AI</button>
+          <button class="nav-item" data-section="cfg-booking">Booking</button>
+        </div>
+        <div class="config-main">
+
+          <!-- Salon Info -->
+          <div class="config-section active" id="cfg-salon">
+            <div class="panel">
+              <h2>Salon Information</h2>
+              <div class="form-grid">
+                <div class="form-group"><label>Salon Name</label>
+                  <input type="text" id="cfg-salon-name"></div>
+                <div class="form-group"><label>Tagline</label>
+                  <input type="text" id="cfg-salon-tagline"></div>
+                <div class="form-group"><label>Phone</label>
+                  <input type="tel" id="cfg-salon-phone"></div>
+                <div class="form-group"><label>Email</label>
+                  <input type="email" id="cfg-salon-email"></div>
+                <div class="form-group full"><label>Website</label>
+                  <input type="url" id="cfg-salon-website"></div>
+              </div>
+              <div class="save-bar">
+                <button class="btn btn-primary" onclick="saveSalonInfo()">Save Salon Info</button>
+                <span class="save-msg" id="cfg-salon-msg"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Locations -->
+          <div class="config-section" id="cfg-locations">
+            <div class="panel">
+              <h2>Locations</h2>
+              <div id="locations-repeater" class="repeater"></div>
+              <button class="add-btn" onclick="addLocation()">+ Add Location</button>
+              <div class="save-bar">
+                <button class="btn btn-primary" onclick="saveLocations()">Save Locations</button>
+                <span class="save-msg" id="cfg-locations-msg"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Services -->
+          <div class="config-section" id="cfg-services">
+            <div class="panel">
+              <h2>Services</h2>
+              <div id="services-repeater" class="repeater"></div>
+              <button class="add-btn" onclick="addServiceCategory()">+ Add Category</button>
+              <div class="save-bar">
+                <button class="btn btn-primary" onclick="saveServices()">Save Services</button>
+                <span class="save-msg" id="cfg-services-msg"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Team / Technicians -->
+          <div class="config-section" id="cfg-team">
+            <div class="panel">
+              <h2>Team / Technicians</h2>
+              <div id="team-repeater" class="repeater"></div>
+              <button class="add-btn" onclick="addTechnician()">+ Add Team Member</button>
+              <div class="save-bar">
+                <button class="btn btn-primary" onclick="saveTeam()">Save Team</button>
+                <span class="save-msg" id="cfg-team-msg"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Policies -->
+          <div class="config-section" id="cfg-policies">
+            <div class="panel">
+              <h2>Policies</h2>
+              <div id="policies-form" class="form-grid"></div>
+              <div class="save-bar">
+                <button class="btn btn-primary" onclick="savePolicies()">Save Policies</button>
+                <span class="save-msg" id="cfg-policies-msg"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- FAQ -->
+          <div class="config-section" id="cfg-faq">
+            <div class="panel">
+              <h2>Frequently Asked Questions</h2>
+              <div id="faq-repeater" class="repeater"></div>
+              <button class="add-btn" onclick="addFAQ()">+ Add FAQ</button>
+              <div class="save-bar">
+                <button class="btn btn-primary" onclick="saveFAQ()">Save FAQ</button>
+                <span class="save-msg" id="cfg-faq-msg"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Voice & AI -->
+          <div class="config-section" id="cfg-voice">
+            <div class="panel">
+              <h2>Voice & AI Settings</h2>
+              <div class="form-grid">
+                <div class="form-group"><label>Voice Provider</label>
+                  <select id="cfg-voice-provider">
+                    <option value="twilio">Twilio</option>
+                    <option value="telnyx">Telnyx</option>
+                    <option value="vapi">VAPI</option>
+                  </select></div>
+                <div class="form-group"><label>TTS Voice</label>
+                  <input type="text" id="cfg-tts-voice" placeholder="Polly.Joanna"></div>
+                <div class="form-group"><label>Language</label>
+                  <select id="cfg-language">
+                    <option value="en-US">English (US)</option>
+                    <option value="en-GB">English (UK)</option>
+                    <option value="es-ES">Spanish</option>
+                    <option value="fr-FR">French</option>
+                    <option value="de-DE">German</option>
+                    <option value="pt-BR">Portuguese (BR)</option>
+                    <option value="it-IT">Italian</option>
+                    <option value="ja-JP">Japanese</option>
+                    <option value="ko-KR">Korean</option>
+                    <option value="zh-CN">Chinese (Simplified)</option>
+                  </select></div>
+                <div class="form-group"><label>Gemini Model</label>
+                  <input type="text" id="cfg-gemini-model" placeholder="gemini-2.0-flash"></div>
+                <div class="form-group"><label>Speech Timeout</label>
+                  <input type="text" id="cfg-speech-timeout" placeholder="auto"></div>
+                <div class="form-group"><label>Gather Timeout (seconds)</label>
+                  <input type="number" id="cfg-gather-timeout" min="1" max="30"></div>
+              </div>
+              <div class="save-bar">
+                <button class="btn btn-primary" onclick="saveVoiceSettings()">Save Voice & AI</button>
+                <span class="save-msg" id="cfg-voice-msg"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Booking -->
+          <div class="config-section" id="cfg-booking">
+            <div class="panel">
+              <h2>Booking Settings</h2>
+              <div class="form-grid">
+                <div class="form-group"><label>Timezone</label>
+                  <select id="cfg-timezone">
+                    <option value="America/New_York">Eastern (New York)</option>
+                    <option value="America/Chicago">Central (Chicago)</option>
+                    <option value="America/Denver">Mountain (Denver)</option>
+                    <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
+                    <option value="America/Phoenix">Arizona (Phoenix)</option>
+                    <option value="America/Anchorage">Alaska</option>
+                    <option value="Pacific/Honolulu">Hawaii</option>
+                    <option value="Europe/London">London (GMT)</option>
+                    <option value="Europe/Paris">Paris (CET)</option>
+                    <option value="Europe/Berlin">Berlin (CET)</option>
+                    <option value="Asia/Tokyo">Tokyo (JST)</option>
+                    <option value="Asia/Dubai">Dubai (GST)</option>
+                    <option value="Australia/Sydney">Sydney (AEST)</option>
+                  </select></div>
+                <div class="form-group"><label>Default Appointment Duration (minutes)</label>
+                  <input type="number" id="cfg-appt-duration" min="15" max="480" step="15"></div>
+                <div class="form-group"><label>Reminder Hours Before</label>
+                  <input type="number" id="cfg-reminder-hours" min="1" max="72"></div>
+                <div class="form-group"><label>Google Calendar ID</label>
+                  <input type="text" id="cfg-calendar-id" placeholder="primary"></div>
+                <div class="form-group"><label>From Email (sender)</label>
+                  <input type="email" id="cfg-from-email" placeholder="bookings@salon.com"></div>
+                <div class="form-group"><label>Notification Email (salon receives alerts)</label>
+                  <input type="email" id="cfg-notification-email" placeholder="manager@salon.com"></div>
+              </div>
+              <div class="save-bar">
+                <button class="btn btn-primary" onclick="saveBookingSettings()">Save Booking</button>
+                <span class="save-msg" id="cfg-booking-msg"></span>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /config-main -->
+      </div><!-- /config-layout -->
+    </div>
   </div>
 
   <script>
@@ -340,6 +590,7 @@
         if (tab.dataset.tab === 'transcripts') loadTranscripts();
         if (tab.dataset.tab === 'appointments') loadAppointments();
         if (tab.dataset.tab === 'active') loadActiveCalls();
+        if (tab.dataset.tab === 'configure') loadConfigData();
       });
     });
 
@@ -537,6 +788,7 @@
         const techData = await techRes.json();
 
         const svcSelect = document.getElementById('callService');
+        svcSelect.innerHTML = '<option value="">— Select service —</option>';
         (svcData.services || []).forEach(s => {
           const opt = document.createElement('option');
           opt.value = s.name;
@@ -545,6 +797,7 @@
         });
 
         const techSelect = document.getElementById('callTechnician');
+        techSelect.innerHTML = '<option value="">— No preference —</option>';
         (techData.technicians || []).forEach(t => {
           const opt = document.createElement('option');
           opt.value = t.name;
@@ -561,6 +814,378 @@
       const div = document.createElement('div');
       div.textContent = str;
       return div.innerHTML;
+    }
+
+    function escapeAttr(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ── Configure Tab: sub-navigation ──────────────
+    document.querySelectorAll('.config-sidebar .nav-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.config-sidebar .nav-item').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.config-section').forEach(s => s.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.section).classList.add('active');
+      });
+    });
+
+    // ── Configure Tab: data loading ────────────────
+    let _kbData = null;
+    let _settingsData = null;
+    let _configLoaded = false;
+
+    async function loadConfigData() {
+      if (_configLoaded) return;
+      try {
+        const [kbRes, setRes] = await Promise.all([
+          fetch('/api/kb'), fetch('/api/settings')
+        ]);
+        _kbData = await kbRes.json();
+        _settingsData = await setRes.json();
+        populateConfigForms();
+        _configLoaded = true;
+      } catch (err) {
+        console.error('Failed to load config data:', err);
+      }
+    }
+
+    function populateConfigForms() {
+      const salon = _kbData.salon || {};
+      document.getElementById('cfg-salon-name').value = salon.name || '';
+      document.getElementById('cfg-salon-tagline').value = salon.tagline || '';
+      document.getElementById('cfg-salon-phone').value = salon.phone || '';
+      document.getElementById('cfg-salon-email').value = salon.email || '';
+      document.getElementById('cfg-salon-website').value = salon.website || '';
+
+      renderLocations(_kbData.locations || []);
+      renderServices(_kbData.services || []);
+      renderTeam(_kbData.technicians || []);
+      renderPolicies(_kbData.policies || {});
+      renderFAQ(_kbData.faq || []);
+
+      const s = _settingsData.settings || {};
+      setVal('cfg-voice-provider', s.voice_provider);
+      setVal('cfg-tts-voice', s.tts_voice);
+      setVal('cfg-language', s.language);
+      setVal('cfg-gemini-model', s.gemini_model);
+      setVal('cfg-speech-timeout', s.speech_timeout);
+      setVal('cfg-gather-timeout', s.gather_timeout);
+      setVal('cfg-timezone', s.salon_timezone);
+      setVal('cfg-appt-duration', s.appointment_duration_minutes);
+      setVal('cfg-reminder-hours', s.reminder_hours_before);
+      setVal('cfg-calendar-id', s.google_calendar_id);
+      setVal('cfg-from-email', s.from_email);
+      setVal('cfg-notification-email', s.salon_notification_email);
+    }
+
+    function setVal(id, setting) {
+      const el = document.getElementById(id);
+      if (el && setting) el.value = setting.value !== undefined ? setting.value : setting;
+    }
+
+    // ── Locations repeater ─────────────────────────
+    const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+
+    function renderLocations(locations) {
+      const container = document.getElementById('locations-repeater');
+      container.innerHTML = '';
+      locations.forEach((loc, i) => {
+        const hours = loc.hours || {};
+        let hoursHtml = '<div class="hours-grid">';
+        DAYS.forEach(d => {
+          hoursHtml += `<label>${d}</label>
+            <input type="text" class="loc-hours-${i}" data-day="${d}" value="${escapeAttr(hours[d] || '')}" placeholder="9:00 AM - 5:00 PM">`;
+        });
+        hoursHtml += '</div>';
+        container.innerHTML += `<div class="repeater-item">
+          <button class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
+          <div class="form-grid">
+            <div class="form-group"><label>Name</label>
+              <input type="text" class="loc-name" value="${escapeAttr(loc.name || '')}"></div>
+            <div class="form-group"><label>Phone</label>
+              <input type="tel" class="loc-phone" value="${escapeAttr(loc.phone || '')}"></div>
+            <div class="form-group full"><label>Address</label>
+              <input type="text" class="loc-address" value="${escapeAttr(loc.address || '')}"></div>
+            <div class="form-group full"><label>Hours</label>${hoursHtml}</div>
+          </div>
+        </div>`;
+      });
+    }
+
+    function addLocation() {
+      renderLocations([...collectLocations(), {name:'', address:'', phone:'', hours:{}}]);
+    }
+
+    function collectLocations() {
+      const items = document.querySelectorAll('#locations-repeater .repeater-item');
+      return Array.from(items).map((item, i) => {
+        const hours = {};
+        item.querySelectorAll(`[class^="loc-hours"]`).forEach(inp => {
+          if (inp.value.trim()) hours[inp.dataset.day] = inp.value.trim();
+        });
+        return {
+          name: item.querySelector('.loc-name').value,
+          address: item.querySelector('.loc-address').value,
+          phone: item.querySelector('.loc-phone')?.value || '',
+          hours
+        };
+      });
+    }
+
+    // ── Services repeater ──────────────────────────
+    function renderServices(services) {
+      const container = document.getElementById('services-repeater');
+      container.innerHTML = '';
+      services.forEach((cat, ci) => {
+        let itemsHtml = '';
+        (cat.items || []).forEach((item, ii) => {
+          itemsHtml += `<div class="repeater-item" style="margin-left:16px">
+            <button class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
+            <div class="form-grid">
+              <div class="form-group"><label>Service Name</label>
+                <input type="text" class="svc-item-name" value="${escapeAttr(item.name || '')}"></div>
+              <div class="form-group"><label>Price</label>
+                <input type="text" class="svc-item-price" value="${escapeAttr(item.price || '')}"></div>
+              <div class="form-group"><label>Duration (min)</label>
+                <input type="number" class="svc-item-duration" value="${item.duration_minutes || 60}" min="5"></div>
+            </div>
+          </div>`;
+        });
+        container.innerHTML += `<div class="repeater-item svc-category" style="border-left:3px solid var(--accent)">
+          <button class="remove-btn" onclick="this.parentElement.remove()">Remove Category</button>
+          <div class="form-group" style="margin-bottom:12px"><label>Category Name</label>
+            <input type="text" class="svc-cat-name" value="${escapeAttr(cat.category || '')}"></div>
+          <div class="svc-items">${itemsHtml}</div>
+          <button class="add-btn" style="margin-top:8px" onclick="addServiceItem(this)">+ Add Service</button>
+        </div>`;
+      });
+    }
+
+    function addServiceCategory() {
+      renderServices([...collectServices(), {category:'New Category', items:[]}]);
+    }
+
+    function addServiceItem(btn) {
+      const itemsDiv = btn.previousElementSibling;
+      const newItem = document.createElement('div');
+      newItem.className = 'repeater-item';
+      newItem.style.marginLeft = '16px';
+      newItem.innerHTML = `<button class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
+        <div class="form-grid">
+          <div class="form-group"><label>Service Name</label>
+            <input type="text" class="svc-item-name" value=""></div>
+          <div class="form-group"><label>Price</label>
+            <input type="text" class="svc-item-price" value=""></div>
+          <div class="form-group"><label>Duration (min)</label>
+            <input type="number" class="svc-item-duration" value="60" min="5"></div>
+        </div>`;
+      itemsDiv.appendChild(newItem);
+    }
+
+    function collectServices() {
+      return Array.from(document.querySelectorAll('.svc-category')).map(cat => ({
+        category: cat.querySelector('.svc-cat-name').value,
+        items: Array.from(cat.querySelectorAll('.svc-items .repeater-item')).map(item => ({
+          name: item.querySelector('.svc-item-name').value,
+          price: item.querySelector('.svc-item-price').value,
+          duration_minutes: parseInt(item.querySelector('.svc-item-duration').value) || 60,
+        }))
+      }));
+    }
+
+    // ── Team repeater ──────────────────────────────
+    function renderTeam(technicians) {
+      const container = document.getElementById('team-repeater');
+      container.innerHTML = '';
+      const allServices = [];
+      (_kbData.services || []).forEach(cat => (cat.items || []).forEach(s => allServices.push(s.name)));
+
+      technicians.forEach((tech, i) => {
+        const specs = new Set(tech.specialties || []);
+        const availDays = new Set(tech.available_days || []);
+
+        let specHtml = '<div class="checkbox-grid">';
+        allServices.forEach(s => {
+          specHtml += `<label><input type="checkbox" class="tech-spec-${i}" value="${escapeAttr(s)}" ${specs.has(s)?'checked':''}> ${escapeHtml(s)}</label>`;
+        });
+        specHtml += '</div>';
+
+        let daysHtml = '<div class="checkbox-grid">';
+        DAYS.forEach(d => {
+          daysHtml += `<label><input type="checkbox" class="tech-day-${i}" value="${d}" ${availDays.has(d)?'checked':''}> ${d.charAt(0).toUpperCase()+d.slice(1)}</label>`;
+        });
+        daysHtml += '</div>';
+
+        container.innerHTML += `<div class="repeater-item" data-idx="${i}">
+          <button class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
+          <div class="form-grid">
+            <div class="form-group"><label>Name</label>
+              <input type="text" class="tech-name" value="${escapeAttr(tech.name || '')}"></div>
+            <div class="form-group"><label>Title</label>
+              <input type="text" class="tech-title" value="${escapeAttr(tech.title || '')}"></div>
+            <div class="form-group full"><label>Specialties</label>${specHtml}</div>
+            <div class="form-group full"><label>Available Days</label>${daysHtml}</div>
+          </div>
+        </div>`;
+      });
+    }
+
+    function addTechnician() {
+      const techs = collectTeam();
+      techs.push({name:'', title:'', specialties:[], available_days:[]});
+      renderTeam(techs);
+    }
+
+    function collectTeam() {
+      return Array.from(document.querySelectorAll('#team-repeater .repeater-item')).map(item => {
+        const idx = item.dataset.idx;
+        return {
+          name: item.querySelector('.tech-name').value,
+          title: item.querySelector('.tech-title').value,
+          specialties: Array.from(item.querySelectorAll(`.tech-spec-${idx}:checked`)).map(cb => cb.value),
+          available_days: Array.from(item.querySelectorAll(`.tech-day-${idx}:checked`)).map(cb => cb.value),
+        };
+      });
+    }
+
+    // ── Policies ───────────────────────────────────
+    function renderPolicies(policies) {
+      const container = document.getElementById('policies-form');
+      container.innerHTML = '';
+      const keys = Object.keys(policies);
+      if (keys.length === 0) keys.push('cancellation', 'late_arrival', 'deposits');
+      keys.forEach(key => {
+        container.innerHTML += `<div class="form-group full">
+          <label>${key.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</label>
+          <textarea class="policy-field" data-key="${escapeAttr(key)}" rows="2">${escapeHtml(policies[key] || '')}</textarea>
+        </div>`;
+      });
+      container.innerHTML += `<div class="form-group full">
+        <button class="add-btn" type="button" onclick="addPolicyField()">+ Add Policy</button>
+      </div>`;
+    }
+
+    function addPolicyField() {
+      const key = prompt('Policy name (e.g., "refund_policy"):');
+      if (!key) return;
+      const policies = collectPolicies();
+      policies[key.toLowerCase().replace(/\s+/g,'_')] = '';
+      renderPolicies(policies);
+    }
+
+    function collectPolicies() {
+      const result = {};
+      document.querySelectorAll('.policy-field').forEach(ta => {
+        result[ta.dataset.key] = ta.value;
+      });
+      return result;
+    }
+
+    // ── FAQ repeater ───────────────────────────────
+    function renderFAQ(faqList) {
+      const container = document.getElementById('faq-repeater');
+      container.innerHTML = '';
+      faqList.forEach(faq => {
+        container.innerHTML += `<div class="repeater-item">
+          <button class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
+          <div class="form-grid">
+            <div class="form-group full"><label>Question</label>
+              <input type="text" class="faq-q" value="${escapeAttr(faq.question || '')}"></div>
+            <div class="form-group full"><label>Answer</label>
+              <textarea class="faq-a" rows="2">${escapeHtml(faq.answer || '')}</textarea></div>
+          </div>
+        </div>`;
+      });
+    }
+
+    function addFAQ() {
+      const faqs = collectFAQ();
+      faqs.push({question:'', answer:''});
+      renderFAQ(faqs);
+    }
+
+    function collectFAQ() {
+      return Array.from(document.querySelectorAll('#faq-repeater .repeater-item')).map(item => ({
+        question: item.querySelector('.faq-q').value,
+        answer: item.querySelector('.faq-a').value,
+      }));
+    }
+
+    // ── Config save helpers ────────────────────────
+    async function saveKBSection(section, data, msgId) {
+      const msg = document.getElementById(msgId);
+      msg.textContent = 'Saving...'; msg.className = 'save-msg';
+      try {
+        const res = await fetch(`/api/kb/${section}`, {
+          method: 'PUT', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(data)
+        });
+        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+        msg.textContent = 'Saved successfully'; msg.className = 'save-msg ok';
+        _configLoaded = false;
+        loadDropdowns();
+      } catch (err) {
+        msg.textContent = 'Error: ' + err.message; msg.className = 'save-msg err';
+      }
+    }
+
+    async function saveSettingsGroup(data, msgId) {
+      const msg = document.getElementById(msgId);
+      msg.textContent = 'Saving...'; msg.className = 'save-msg';
+      try {
+        const existingRes = await fetch('/api/settings');
+        const existing = await existingRes.json();
+        const merged = {...(existing.overrides || {}), ...data};
+        const res = await fetch('/api/settings', {
+          method: 'PUT', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(merged)
+        });
+        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+        msg.textContent = 'Saved successfully'; msg.className = 'save-msg ok';
+        _configLoaded = false;
+      } catch (err) {
+        msg.textContent = 'Error: ' + err.message; msg.className = 'save-msg err';
+      }
+    }
+
+    function saveSalonInfo() {
+      const data = {
+        name: document.getElementById('cfg-salon-name').value,
+        tagline: document.getElementById('cfg-salon-tagline').value,
+        phone: document.getElementById('cfg-salon-phone').value,
+        email: document.getElementById('cfg-salon-email').value,
+        website: document.getElementById('cfg-salon-website').value,
+      };
+      saveKBSection('salon', data, 'cfg-salon-msg');
+      if (data.name) saveSettingsGroup({salon_name: data.name}, 'cfg-salon-msg');
+    }
+    function saveLocations() { saveKBSection('locations', collectLocations(), 'cfg-locations-msg'); }
+    function saveServices() { saveKBSection('services', collectServices(), 'cfg-services-msg'); }
+    function saveTeam() { saveKBSection('technicians', collectTeam(), 'cfg-team-msg'); }
+    function savePolicies() { saveKBSection('policies', collectPolicies(), 'cfg-policies-msg'); }
+    function saveFAQ() { saveKBSection('faq', collectFAQ(), 'cfg-faq-msg'); }
+
+    function saveVoiceSettings() {
+      saveSettingsGroup({
+        voice_provider: document.getElementById('cfg-voice-provider').value,
+        tts_voice: document.getElementById('cfg-tts-voice').value,
+        language: document.getElementById('cfg-language').value,
+        gemini_model: document.getElementById('cfg-gemini-model').value,
+        speech_timeout: document.getElementById('cfg-speech-timeout').value,
+        gather_timeout: parseInt(document.getElementById('cfg-gather-timeout').value) || 5,
+      }, 'cfg-voice-msg');
+    }
+
+    function saveBookingSettings() {
+      saveSettingsGroup({
+        salon_timezone: document.getElementById('cfg-timezone').value,
+        appointment_duration_minutes: parseInt(document.getElementById('cfg-appt-duration').value) || 60,
+        reminder_hours_before: parseInt(document.getElementById('cfg-reminder-hours').value) || 24,
+        google_calendar_id: document.getElementById('cfg-calendar-id').value,
+        from_email: document.getElementById('cfg-from-email').value,
+        salon_notification_email: document.getElementById('cfg-notification-email').value,
+      }, 'cfg-booking-msg');
     }
 
     // ── Init ───────────────────────────────────────
