@@ -8,6 +8,7 @@ twilio>=9.3.0
 
 # AI
 google-genai>=1.0.0
+openai>=1.50.0
 
 # Google APIs
 google-auth>=2.35.0

@@ -30,8 +30,10 @@ EDITABLE_KEYS: set[str] = {
     "speech_timeout",
     "gather_timeout",
     "language",
-    # AI model
+    # AI provider & models
+    "ai_provider",
     "gemini_model",
+    "openai_model",
     # Booking
     "appointment_duration_minutes",
     "salon_timezone",
@@ -89,6 +91,27 @@ def _sanitize(data: dict[str, Any]) -> dict[str, Any]:
                 "Valid options: %s", model, ", ".join(sorted(known))
             )
         out["gemini_model"] = model
+
+    if "openai_model" in out and isinstance(out["openai_model"], str):
+        known = {
+            "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4",
+            "gpt-3.5-turbo", "o1", "o1-mini", "o3-mini",
+        }
+        model = out["openai_model"].strip()
+        if model and model not in known:
+            logger.warning(
+                "openai_model %r is not a standard OpenAI model name. "
+                "Proceeding anyway — check https://platform.openai.com/docs/models",
+                model,
+            )
+        out["openai_model"] = model
+
+    if "ai_provider" in out and isinstance(out["ai_provider"], str):
+        provider = out["ai_provider"].strip().lower()
+        if provider not in ("gemini", "openai"):
+            logger.warning("ai_provider %r unknown — defaulting to gemini", provider)
+            provider = "gemini"
+        out["ai_provider"] = provider
 
     return out
 

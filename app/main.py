@@ -8,14 +8,17 @@ VoIP calls, books appointments, and manages customer communications.
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
+from datetime import date as _date
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from app.ai.gemini_agent import research
+from app.ai.dispatcher import research
+from app.auth import check_credentials, get_session_user, login_response, logout_response
 from app.config import get_base_url, get_settings
 from app.integrations.google_sheets import (
     get_appointments,
@@ -31,9 +34,9 @@ from app.knowledge_base.loader import (
     save_kb,
     save_section,
 )
-from app.settings_store import EDITABLE_KEYS, load_overrides, save_overrides
-from app.models.appointment import OutboundCallRequest
+from app.models.appointment import AppointmentData, OutboundCallRequest
 from app.scheduler.reminders import start_scheduler, stop_scheduler
+from app.settings_store import EDITABLE_KEYS, load_overrides, save_overrides
 from app.voice.router import router as voice_router
 from app.voice.session import get_active_sessions
 
@@ -43,11 +46,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+_TEMPLATES = Path(__file__).parent / "templates"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
-    import os
     from app.ai.gemini_agent import _FALLBACK_MODEL, _KNOWN_MODELS
 
     settings = get_settings()
@@ -64,18 +68,28 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Base URL: %s", effective_base)
 
-    if not settings.gemini_api_key:
-        logger.error("STARTUP WARNING: GEMINI_API_KEY is not set. AI responses will fail.")
-
-    if settings.gemini_model not in _KNOWN_MODELS:
-        logger.warning(
-            "STARTUP WARNING: gemini_model=%r is not a known valid model. "
-            "Will fall back to %s. Fix via dashboard Configure > Voice & AI.",
-            settings.gemini_model, _FALLBACK_MODEL,
-        )
+    ai_provider = settings.ai_provider.lower()
+    if ai_provider == "openai":
+        if not settings.openai_api_key:
+            logger.error("STARTUP WARNING: OPENAI_API_KEY is not set but ai_provider=openai. AI will fail.")
+    else:
+        if not settings.gemini_api_key:
+            logger.error("STARTUP WARNING: GEMINI_API_KEY is not set. AI responses will fail.")
+        if settings.gemini_model not in _KNOWN_MODELS:
+            logger.warning(
+                "STARTUP WARNING: gemini_model=%r is not a known valid model. "
+                "Will fall back to %s. Fix via dashboard Configure > Voice & AI.",
+                settings.gemini_model, _FALLBACK_MODEL,
+            )
 
     if not settings.twilio_account_sid and settings.voice_provider == "twilio":
         logger.warning("STARTUP WARNING: TWILIO_ACCOUNT_SID is not set.")
+
+    if not settings.dashboard_password:
+        logger.warning(
+            "STARTUP WARNING: DASHBOARD_PASSWORD is not set — dashboard login is disabled. "
+            "Add DASHBOARD_PASSWORD=<your-password> in Railway > Variables."
+        )
 
     # Initialize spreadsheet tabs
     if settings.google_sheet_id and settings.get_google_credentials_info():
@@ -106,7 +120,7 @@ app = FastAPI(
     title="NuvuSalon Voice Agent",
     description=(
         "AI-powered VoIP phone agent for salon & spa appointment booking. "
-        "Handles inbound/outbound calls via Twilio, uses Gemini for conversation, "
+        "Handles inbound/outbound calls via Twilio, uses Gemini or OpenAI for conversation, "
         "and integrates with Google Calendar, Sheets, and SendGrid."
     ),
     version="1.0.0",
@@ -126,17 +140,126 @@ app.add_middleware(
 app.include_router(voice_router)
 
 
-# ── Admin Dashboard ────────────────────────────────────────────
-
-_TEMPLATE_PATH = Path(__file__).parent / "templates" / "dashboard.html"
-
+# ── Public Landing Page ────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
-    """Admin dashboard: outbound calls, transcripts, appointments, live status."""
-    import os
+async def landing_page(request: Request):
+    """Public salon landing page with online booking form."""
     settings = get_settings()
-    template = _TEMPLATE_PATH.read_text()
+    template = (_TEMPLATES / "index.html").read_text()
+
+    # Build service options for the dropdown
+    services = get_services_flat()
+    service_options = "\n".join(
+        f'<option value="{s}">{s}</option>' for s in services
+    ) if services else '<option value="Haircut">Haircut</option>'
+
+    phone = settings.twilio_phone_number or ""
+    phone_display = phone if phone else "our salon"
+
+    phone_nav = (
+        f'<a href="tel:{phone}" class="tel-link">&#128222; {phone}</a>'
+        if phone else ""
+    )
+    phone_btn = (
+        f'<a href="tel:{phone}" class="btn-hero ghost">&#128222; Call Us</a>'
+        if phone else ""
+    )
+
+    html = (
+        template
+        .replace("{{salon_name}}", settings.salon_name)
+        .replace("{{service_options}}", service_options)
+        .replace("{{phone_number}}", phone)
+        .replace("{{phone_number_display}}", phone_display)
+        .replace("{{phone_nav}}", phone_nav)
+        .replace("{{phone_btn}}", phone_btn)
+        .replace("{{year}}", str(_date.today().year))
+    )
+    return HTMLResponse(content=html)
+
+
+# ── Twilio misconfiguration safety net ────────────────────────
+
+@app.post("/")
+async def root_post_fallback(request: Request):
+    """
+    Twilio sometimes POSTs to '/' when the webhook URL is misconfigured.
+    Redirect to the inbound handler so the caller still hears a greeting.
+    """
+    try:
+        form = await request.form()
+        body = dict(form)
+    except Exception:
+        body = {}
+    logger.warning(
+        "Twilio hit POST / instead of a voice webhook — probable cause: "
+        "BASE_URL or RAILWAY_PUBLIC_DOMAIN not set. Payload: %s", body
+    )
+    return RedirectResponse(url="/voice/inbound", status_code=307)
+
+
+# ── Auth: Login / Logout ───────────────────────────────────────
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, error: str = ""):
+    """Staff login page."""
+    # Already authenticated — go straight to dashboard
+    if get_session_user(request):
+        return RedirectResponse(url="/dashboard", status_code=302)
+
+    settings = get_settings()
+    template = (_TEMPLATES / "login.html").read_text()
+    html = (
+        template
+        .replace("{{salon_name}}", settings.salon_name)
+        .replace("{{error_message}}", error)
+        .replace("{{error_class}}", "show" if error else "")
+        .replace("{{prefill_username}}", "")
+    )
+    return HTMLResponse(content=html)
+
+
+@app.post("/login")
+async def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    """Process login form. Set session cookie on success, show error on failure."""
+    if check_credentials(username, password):
+        logger.info("Dashboard login: %s", username)
+        return login_response(username, redirect_to="/dashboard")
+
+    logger.warning("Dashboard login failed for username: %s", username)
+    settings = get_settings()
+    template = (_TEMPLATES / "login.html").read_text()
+    html = (
+        template
+        .replace("{{salon_name}}", settings.salon_name)
+        .replace("{{error_message}}", "Invalid username or password.")
+        .replace("{{error_class}}", "show")
+        .replace("{{prefill_username}}", username)
+    )
+    return HTMLResponse(content=html, status_code=401)
+
+
+@app.get("/logout")
+async def logout():
+    """Clear session cookie and redirect to login."""
+    return logout_response(redirect_to="/login")
+
+
+# ── Admin Dashboard (auth required) ───────────────────────────
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    """Admin dashboard — requires login."""
+    if not get_session_user(request):
+        return RedirectResponse(url="/login", status_code=302)
+
+    settings = get_settings()
+    template = (_TEMPLATES / "dashboard.html").read_text()
 
     def _dot(val: str) -> tuple[str, str]:
         return ("on", "Connected") if val else ("off", "Not configured")
@@ -151,11 +274,20 @@ async def root(request: Request):
         voip_name = settings.voice_provider.title()
 
     vp_dot, vp_lbl = ("on", "Connected") if voip_configured else ("off", "Not configured")
-    gm_dot, gm_lbl = _dot(settings.gemini_api_key)
     sh_dot, sh_lbl = _dot(settings.google_sheet_id)
     em_dot, em_lbl = _dot(settings.sendgrid_api_key)
 
-    # Detect effective base URL for the warning banner
+    # AI provider status
+    ai_provider = settings.ai_provider.lower()
+    if ai_provider == "openai":
+        ai_configured = bool(settings.openai_api_key)
+        ai_name = "OpenAI"
+    else:
+        ai_configured = bool(settings.gemini_api_key)
+        ai_name = "Gemini"
+    ai_dot, ai_lbl = ("on", "Connected") if ai_configured else ("off", "Not configured")
+
+    # BASE_URL warning
     effective_base = (
         settings.base_url
         or os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
@@ -165,7 +297,8 @@ async def root(request: Request):
         '<div style="background:#f59e0b20;border:1px solid #f59e0b;border-radius:10px;'
         'padding:14px 20px;margin-bottom:20px;color:#f59e0b;font-size:13px;">'
         '<strong>&#9888; BASE_URL not configured</strong> — Outbound call webhooks will fail. '
-        'Add <code style="background:#0005;padding:2px 6px;border-radius:4px;">BASE_URL=https://your-app.up.railway.app</code> '
+        'Add <code style="background:#0005;padding:2px 6px;border-radius:4px;">'
+        'BASE_URL=https://your-app.up.railway.app</code> '
         'in Railway &rsaquo; Variables.</div>'
     )
 
@@ -175,8 +308,9 @@ async def root(request: Request):
         .replace("{{voip_name}}", voip_name)
         .replace("{{voip_dot}}", vp_dot)
         .replace("{{voip_label}}", vp_lbl)
-        .replace("{{gemini_dot}}", gm_dot)
-        .replace("{{gemini_label}}", gm_lbl)
+        .replace("{{ai_provider_name}}", ai_name)
+        .replace("{{ai_dot}}", ai_dot)
+        .replace("{{ai_label}}", ai_lbl)
         .replace("{{sheets_dot}}", sh_dot)
         .replace("{{sheets_label}}", sh_lbl)
         .replace("{{email_dot}}", em_dot)
@@ -200,58 +334,34 @@ async def health():
     except Exception:
         voip_ok = False
         voip_name = settings.voice_provider
+
+    ai_provider = settings.ai_provider.lower()
+    ai_configured = bool(settings.openai_api_key) if ai_provider == "openai" else bool(settings.gemini_api_key)
+
     return {
         "status": "healthy",
         "service": settings.app_name,
         "voice_provider": voip_name,
         "voice_configured": voip_ok,
-        "gemini_configured": bool(settings.gemini_api_key),
+        "ai_provider": ai_provider,
+        "ai_configured": ai_configured,
         "sheets_configured": bool(settings.google_sheet_id),
         "email_configured": bool(settings.sendgrid_api_key),
     }
-
-
-# ── Twilio misconfiguration safety net ────────────────────────
-
-@app.post("/")
-async def root_post_fallback(request: Request):
-    """
-    Twilio sometimes POSTs to '/' when the webhook URL is misconfigured
-    (e.g. BASE_URL not set, so answer_url was just a path with no host).
-    Log the payload so we can diagnose it, then redirect to /voice/inbound
-    so the call still works rather than playing the Twilio error message.
-    """
-    from fastapi.responses import RedirectResponse
-    try:
-        form = await request.form()
-        body = dict(form)
-    except Exception:
-        body = {}
-    logger.warning(
-        "Twilio hit POST / instead of a voice webhook — probable cause: "
-        "BASE_URL or RAILWAY_PUBLIC_DOMAIN not set. "
-        "Configure BASE_URL in Railway Variables. Payload: %s", body
-    )
-    # Forward Twilio to the inbound handler so the caller hears a greeting
-    return RedirectResponse(url="/voice/inbound", status_code=307)
 
 
 # ── Webhook URL diagnostic ─────────────────────────────────────
 
 @app.get("/api/webhook-urls")
 async def webhook_urls(request: Request):
-    """
-    Returns the exact URLs to paste into the Twilio console.
-    Also shows which base URL was detected and how.
-    """
-    import os
+    """Returns the exact URLs to paste into the Twilio console."""
     settings = get_settings()
     host = request.headers.get("host", "")
 
-    # Determine source of base URL
     if settings.base_url:
-        base = settings.base_url.rstrip("/")
-        source = "BASE_URL env var"
+        raw = settings.base_url.strip().rstrip("/")
+        base = raw if raw.startswith(("http://", "https://")) else f"https://{raw}"
+        source = "BASE_URL setting"
     elif os.environ.get("RAILWAY_PUBLIC_DOMAIN"):
         base = f"https://{os.environ['RAILWAY_PUBLIC_DOMAIN'].rstrip('/')}"
         source = "RAILWAY_PUBLIC_DOMAIN env var (auto-detected)"
@@ -270,7 +380,7 @@ async def webhook_urls(request: Request):
             "inbound_webhook": {
                 "url": f"{base}/voice/inbound",
                 "method": "HTTP POST",
-                "description": "Paste this into: Twilio Console → Phone Numbers → your number → Voice → A call comes in",
+                "description": "Paste into: Twilio Console → Phone Numbers → your number → Voice → A call comes in",
             },
             "status_callback": {
                 "url": f"{base}/voice/status",
@@ -282,6 +392,70 @@ async def webhook_urls(request: Request):
             "If base_url shows 'NOT CONFIGURED', add BASE_URL=https://your-app.up.railway.app "
             "in Railway → your service → Variables, then redeploy."
         ) if not base else "URLs look correct. Copy inbound_webhook URL into Twilio Console.",
+    }
+
+
+# ── Public Booking API ─────────────────────────────────────────
+
+@app.post("/api/book")
+async def api_book(request: Request):
+    """
+    Public online booking endpoint (used by the landing page form).
+    Logs the request to Google Sheets and sends a staff notification email.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"error": "Invalid JSON body"})
+
+    try:
+        appt = AppointmentData(
+            customer_name=body.get("customer_name", "").strip() or None,
+            phone_number=body.get("phone_number", "").strip() or None,
+            email=body.get("email", "").strip() or None,
+            service=body.get("service", "").strip() or None,
+            preferred_date=body.get("preferred_date", "").strip() or None,
+            preferred_time=body.get("preferred_time", "").strip() or None,
+            notes=body.get("notes", "").strip() or None,
+        )
+    except Exception as exc:
+        return JSONResponse(status_code=422, content={"error": str(exc)})
+
+    missing = appt.missing_required_fields()
+    if missing:
+        return JSONResponse(
+            status_code=422,
+            content={"error": f"Missing required fields: {', '.join(missing)}"},
+        )
+
+    # Log to Google Sheets
+    try:
+        from app.integrations.google_sheets import log_appointment
+        log_appointment(appt, calendar_link="")
+    except Exception as exc:
+        logger.warning("Online booking — failed to log to Sheets: %s", exc)
+
+    # Notify staff by email
+    try:
+        from app.integrations.email_sender import send_staff_notification
+        send_staff_notification(appt)
+    except Exception as exc:
+        logger.warning("Online booking — failed to send staff email: %s", exc)
+
+    settings = get_settings()
+    logger.info(
+        "Online booking request: %s (%s) — %s on %s at %s",
+        appt.customer_name, appt.phone_number, appt.service,
+        appt.preferred_date, appt.preferred_time,
+    )
+
+    return {
+        "status": "received",
+        "message": (
+            f"Thank you {appt.customer_name}! Your request for {appt.service} "
+            f"on {appt.preferred_date} at {appt.preferred_time} has been received. "
+            f"We'll confirm your appointment shortly."
+        ),
     }
 
 
@@ -336,7 +510,7 @@ async def reload_knowledge_base():
 
 @app.post("/api/research")
 async def research_endpoint(question: str):
-    """Use Gemini to research a salon/spa industry question."""
+    """Use the active AI to research a salon/spa industry question."""
     answer = await research(question)
     return {"question": question, "answer": answer}
 
@@ -428,7 +602,7 @@ async def api_put_kb(request: Request):
 
 @app.get("/api/kb/{section}")
 async def api_get_kb_section(section: str):
-    """Return a single KB section (salon, locations, services, technicians, policies, faq)."""
+    """Return a single KB section."""
     kb = get_full_kb()
     if section not in kb:
         return JSONResponse(status_code=404, content={"error": f"Section '{section}' not found"})

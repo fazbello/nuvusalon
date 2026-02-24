@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 
-from app.ai.gemini_agent import get_outbound_response
+from app.ai.dispatcher import get_outbound_response
 from app.config import get_base_url, get_settings
 from app.models.appointment import CallType, OutboundCallRequest, TranscriptRecord
 from app.integrations.google_sheets import log_transcript
