@@ -73,6 +73,10 @@ async def inbound_call(request: Request):
     """Webhook: incoming call just arrived."""
     try:
         data = await _parse_request(request)
+        logger.info(
+            "Inbound call webhook received — From: %s  To: %s  CallSid: %s",
+            data.get("From", "?"), data.get("To", "?"), data.get("CallSid", "?"),
+        )
         response_body = await handle_inbound_call(data)
         return _provider_response(response_body)
     except Exception as exc:
@@ -85,6 +89,10 @@ async def process_speech(request: Request):
     """Webhook: customer spoke during inbound call."""
     try:
         data = await _parse_request(request)
+        logger.info(
+            "Speech input — CallSid: %s  Speech: %r  Confidence: %s",
+            data.get("CallSid", "?"), data.get("SpeechResult", ""), data.get("Confidence", "?"),
+        )
         response_body = await handle_speech_input(data)
         return _provider_response(response_body)
     except Exception as exc:
@@ -134,6 +142,10 @@ async def outbound_answer(request: Request):
     """Webhook: outbound call was answered."""
     try:
         data = await _parse_request(request)
+        logger.info(
+            "Outbound call answered — CallSid: %s  To: %s  Status: %s",
+            data.get("CallSid", "?"), data.get("To", "?"), data.get("CallStatus", "?"),
+        )
         response_body = await handle_outbound_answer(data)
         return _provider_response(response_body)
     except Exception as exc:

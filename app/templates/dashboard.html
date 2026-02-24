@@ -291,6 +291,7 @@
       <div class="tab" data-tab="transcripts">Call Transcripts</div>
       <div class="tab" data-tab="appointments">Appointments</div>
       <div class="tab" data-tab="active">Active Calls</div>
+      <div class="tab" data-tab="setup">Twilio Setup</div>
       <div class="tab" data-tab="configure">Configure</div>
     </div>
 
@@ -388,6 +389,93 @@
         </div>
         <div id="activeCallsBody">
           <div class="loading">Checking for active calls...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Twilio Setup ─────────────────────── -->
+    <div class="tab-content" id="tab-setup">
+      <div class="panel" id="setup-loading">
+        <div class="loading">Loading webhook URLs...</div>
+      </div>
+      <div id="setup-content" style="display:none">
+        <!-- Webhook URL Status -->
+        <div class="panel" id="setup-status-panel">
+          <h2>Webhook URL Status</h2>
+          <div id="setup-status-body"></div>
+        </div>
+
+        <!-- Step-by-step Twilio Console instructions -->
+        <div class="panel">
+          <h2>Step 1 — Set BASE_URL in Railway</h2>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+            Railway needs to know its own public URL to build webhook callbacks correctly.
+          </p>
+          <ol style="font-size:13px;line-height:2;color:var(--text);padding-left:20px">
+            <li>Open <strong>Railway → your service → Variables</strong></li>
+            <li>Add a new variable: <code style="background:var(--surface2);padding:2px 8px;border-radius:4px">BASE_URL</code></li>
+            <li>Set its value to your Railway public URL (shown below)</li>
+            <li>Railway will automatically redeploy</li>
+          </ol>
+          <div style="margin-top:12px">
+            <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Your Railway URL (copy this as BASE_URL):</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <code id="setup-base-url" style="background:var(--surface2);padding:8px 14px;border-radius:8px;font-size:13px;flex:1;word-break:break-all">detecting...</code>
+              <button class="btn btn-secondary" onclick="copyText('setup-base-url')">Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Step 2 — Configure Twilio Phone Number</h2>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+            Paste these URLs into your Twilio Console so calls are routed to this app.
+          </p>
+          <ol style="font-size:13px;line-height:1.8;color:var(--text);padding-left:20px;margin-bottom:16px">
+            <li>Go to <strong>console.twilio.com → Phone Numbers → Manage → Active numbers</strong></li>
+            <li>Click your Twilio number</li>
+            <li>Scroll to <strong>"Voice &amp; Fax"</strong></li>
+            <li>Set <em>A call comes in</em> to <strong>Webhook</strong> and paste the Inbound URL below</li>
+            <li>Set method to <strong>HTTP POST</strong></li>
+            <li>Optionally set <em>Call Status Changes</em> to the Status URL</li>
+            <li>Click <strong>Save configuration</strong></li>
+          </ol>
+
+          <div class="form-grid">
+            <div class="form-group full">
+              <label>Inbound Webhook URL ("A call comes in")</label>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="setup-inbound-url" readonly style="flex:1;background:var(--surface2)">
+                <button class="btn btn-secondary" onclick="copyInput('setup-inbound-url')">Copy</button>
+              </div>
+            </div>
+            <div class="form-group full">
+              <label>Status Callback URL (optional — "Call Status Changes")</label>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="setup-status-url" readonly style="flex:1;background:var(--surface2)">
+                <button class="btn btn-secondary" onclick="copyInput('setup-status-url')">Copy</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Step 3 — Twilio Trial Account Note</h2>
+          <p style="font-size:13px;color:var(--muted);line-height:1.8">
+            On a <strong>Twilio trial account</strong>, you can only call <strong>verified phone numbers</strong>
+            (numbers you've verified in the Twilio console). Calls to unverified numbers will fail.<br><br>
+            To verify a number: <strong>Twilio Console → Phone Numbers → Verified Caller IDs → Add a new Caller ID</strong>.<br><br>
+            Trial calls also begin with a Twilio announcement — this is removed on paid accounts.
+          </p>
+        </div>
+
+        <div class="panel">
+          <h2>Refresh / Test</h2>
+          <div style="display:flex;gap:12px;align-items:center">
+            <button class="btn btn-secondary" onclick="loadSetup(true)">Refresh URLs</button>
+            <a id="setup-health-link" href="/health" target="_blank" class="btn btn-secondary">Open Health Check</a>
+            <a id="setup-docs-link" href="/docs" target="_blank" class="btn btn-secondary">Open API Docs</a>
+          </div>
         </div>
       </div>
     </div>
@@ -499,6 +587,13 @@
             <div class="panel">
               <h2>Voice & AI Settings</h2>
               <div class="form-grid">
+                <div class="form-group full">
+                  <label>Public Base URL (BASE_URL) — used for Twilio webhook callbacks</label>
+                  <input type="url" id="cfg-base-url" placeholder="https://your-app.up.railway.app">
+                  <small style="color:var(--muted);font-size:11px;margin-top:4px;display:block">
+                    Must match your Railway public URL. Also set BASE_URL in Railway → Variables for reliability.
+                  </small>
+                </div>
                 <div class="form-group"><label>Voice Provider</label>
                   <select id="cfg-voice-provider">
                     <option value="twilio">Twilio</option>
@@ -592,6 +687,7 @@
         if (tab.dataset.tab === 'appointments') loadAppointments();
         if (tab.dataset.tab === 'active') loadActiveCalls();
         if (tab.dataset.tab === 'configure') loadConfigData();
+        if (tab.dataset.tab === 'setup') loadSetup();
       });
     });
 
@@ -866,6 +962,7 @@
       renderFAQ(_kbData.faq || []);
 
       const s = _settingsData.settings || {};
+      setVal('cfg-base-url', s.base_url);
       setVal('cfg-voice-provider', s.voice_provider);
       setVal('cfg-tts-voice', s.tts_voice);
       setVal('cfg-language', s.language);
@@ -1169,6 +1266,7 @@
 
     function saveVoiceSettings() {
       saveSettingsGroup({
+        base_url: document.getElementById('cfg-base-url').value,
         voice_provider: document.getElementById('cfg-voice-provider').value,
         tts_voice: document.getElementById('cfg-tts-voice').value,
         language: document.getElementById('cfg-language').value,
@@ -1187,6 +1285,71 @@
         from_email: document.getElementById('cfg-from-email').value,
         salon_notification_email: document.getElementById('cfg-notification-email').value,
       }, 'cfg-booking-msg');
+    }
+
+    // ── Twilio Setup Tab ───────────────────────────
+    let _setupLoaded = false;
+    async function loadSetup(force = false) {
+      if (_setupLoaded && !force) return;
+      document.getElementById('setup-loading').style.display = 'block';
+      document.getElementById('setup-content').style.display = 'none';
+      try {
+        const res = await fetch('/api/webhook-urls');
+        const data = await res.json();
+
+        // Status panel
+        const configured = data.configured;
+        const statusHtml = `
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <span class="dot ${configured ? 'on' : 'off'}"></span>
+            <span style="font-size:14px;font-weight:600">${configured ? 'Base URL configured' : 'Base URL NOT configured'}</span>
+          </div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:8px">
+            <strong>Source:</strong> ${escapeHtml(data.source)}
+          </div>
+          <div style="font-size:13px;color:var(--muted)">
+            <strong>Detected URL:</strong> <code style="background:var(--surface2);padding:2px 8px;border-radius:4px">${escapeHtml(data.base_url || '(none)')}</code>
+          </div>
+          ${!configured ? `<div style="margin-top:12px;padding:12px;background:#f59e0b20;border:1px solid #f59e0b;border-radius:8px;font-size:13px;color:#f59e0b">
+            &#9888; <strong>Action required:</strong> ${escapeHtml(data.note)}
+          </div>` : `<div style="margin-top:12px;padding:12px;background:#10b98120;border:1px solid #10b981;border-radius:8px;font-size:13px;color:#10b981">
+            &#10003; ${escapeHtml(data.note)}
+          </div>`}`;
+        document.getElementById('setup-status-body').innerHTML = statusHtml;
+
+        // Webhook URL fields
+        const inbound = data.twilio_console_settings?.inbound_webhook?.url || '';
+        const status = data.twilio_console_settings?.status_callback?.url || '';
+        document.getElementById('setup-base-url').textContent = data.base_url || '(not detected)';
+        document.getElementById('setup-inbound-url').value = inbound;
+        document.getElementById('setup-status-url').value = status;
+
+        document.getElementById('setup-loading').style.display = 'none';
+        document.getElementById('setup-content').style.display = 'block';
+        _setupLoaded = true;
+      } catch (err) {
+        document.getElementById('setup-loading').innerHTML = `<div class="empty-state">
+          <p><strong>Could not load webhook URLs</strong></p>
+          <p>${escapeHtml(err.message)}</p>
+        </div>`;
+      }
+    }
+
+    function copyText(elementId) {
+      const el = document.getElementById(elementId);
+      navigator.clipboard.writeText(el.textContent).then(() => {
+        el.style.background = '#10b98130';
+        setTimeout(() => el.style.background = '', 1000);
+      });
+    }
+
+    function copyInput(elementId) {
+      const el = document.getElementById(elementId);
+      el.select();
+      navigator.clipboard.writeText(el.value).then(() => {
+        el.style.borderColor = 'var(--green)';
+        setTimeout(() => el.style.borderColor = '', 1000);
+      });
     }
 
     // ── Init ───────────────────────────────────────
