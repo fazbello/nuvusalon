@@ -56,10 +56,10 @@ def record_call(
         hour_key = str(now.hour)
         day_key = now.strftime("%A").lower()
         stats.setdefault("peak_hours", {})[hour_key] = (
-            stats["peak_hours"].get(hour_key, 0) + 1
+            stats.get("peak_hours", {}).get(hour_key, 0) + 1
         )
         stats.setdefault("peak_days", {})[day_key] = (
-            stats["peak_days"].get(day_key, 0) + 1
+            stats.get("peak_days", {}).get(day_key, 0) + 1
         )
 
         stats["last_updated"] = now.isoformat()
