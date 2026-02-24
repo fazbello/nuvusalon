@@ -48,6 +48,12 @@ def _get_client() -> genai.Client:
     return _client
 
 
+def reset_client() -> None:
+    """Force a new client to be created on the next call (e.g. after API key change)."""
+    global _client
+    _client = None
+
+
 def _build_inbound_system_prompt(appointment: AppointmentData) -> str:
     settings = get_settings()
     return RECEPTIONIST_SYSTEM_PROMPT.format(

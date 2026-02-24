@@ -515,6 +515,80 @@ async def research_endpoint(question: str):
     return {"question": question, "answer": answer}
 
 
+@app.post("/api/test-ai")
+async def test_ai_connection():
+    """
+    Verify the active AI provider credentials with a minimal API call.
+    Uses the cheapest/fastest path to reduce free-credit spend:
+      - OpenAI: gpt-4o-mini, max_tokens=5
+      - Gemini: gemini-2.0-flash (or configured model), max_output_tokens=5
+    """
+    settings = get_settings()
+    provider = settings.ai_provider.lower()
+
+    if provider == "openai":
+        if not settings.openai_api_key:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "provider": "openai", "error": "OPENAI_API_KEY is not set in Railway Variables."},
+            )
+        try:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=settings.openai_api_key)
+            resp = await client.chat.completions.create(
+                model=settings.openai_model,
+                messages=[{"role": "user", "content": "Reply with exactly one word: OK"}],
+                max_tokens=5,
+                temperature=0,
+            )
+            reply = (resp.choices[0].message.content or "").strip()
+            tokens_used = resp.usage.total_tokens if resp.usage else "?"
+            return {
+                "ok": True,
+                "provider": "openai",
+                "model": settings.openai_model,
+                "reply": reply,
+                "tokens_used": tokens_used,
+                "note": f"gpt-4o-mini costs ~$0.15/1M input tokens — very low free-credit usage.",
+            }
+        except Exception as exc:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "provider": "openai", "model": settings.openai_model, "error": str(exc)},
+            )
+    else:
+        # Gemini
+        if not settings.gemini_api_key:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "provider": "gemini", "error": "GEMINI_API_KEY is not set in Railway Variables."},
+            )
+        try:
+            from google import genai
+            from google.genai import types as gtypes
+            from app.ai.gemini_agent import _FALLBACK_MODEL, _KNOWN_MODELS
+            model = settings.gemini_model if settings.gemini_model in _KNOWN_MODELS else _FALLBACK_MODEL
+            client = genai.Client(api_key=settings.gemini_api_key)
+            resp = client.models.generate_content(
+                model=model,
+                contents="Reply with exactly one word: OK",
+                config=gtypes.GenerateContentConfig(max_output_tokens=5, temperature=0),
+            )
+            reply = (resp.text or "").strip()
+            return {
+                "ok": True,
+                "provider": "gemini",
+                "model": model,
+                "reply": reply,
+                "note": "gemini-2.0-flash has a free tier — no billing needed for testing.",
+            }
+        except Exception as exc:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "provider": "gemini", "model": settings.gemini_model, "error": str(exc)},
+            )
+
+
 @app.post("/api/outbound-call")
 async def api_outbound_call(outbound_request: OutboundCallRequest, request: Request):
     """

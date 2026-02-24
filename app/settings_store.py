@@ -146,11 +146,21 @@ def delete_setting(key: str) -> dict[str, Any]:
 
 
 def _invalidate_caches() -> None:
-    """Clear cached singletons so new settings take effect."""
+    """Clear cached singletons so new settings take effect immediately."""
     from app.config import get_settings
     get_settings.cache_clear()
     try:
         from app.voice.providers import get_provider
         get_provider.cache_clear()
+    except Exception:
+        pass
+    try:
+        from app.ai.gemini_agent import reset_client as _gr
+        _gr()
+    except Exception:
+        pass
+    try:
+        from app.ai.openai_agent import reset_client as _or
+        _or()
     except Exception:
         pass
