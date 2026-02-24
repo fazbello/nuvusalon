@@ -3,6 +3,9 @@
 credentials.json
 token.json
 
+# Per-deployment runtime settings (franchise overrides)
+config/salon_settings.json
+
 # Intermediate / temp files — contents ignored via .tmp/.gitignore
 
 # Python

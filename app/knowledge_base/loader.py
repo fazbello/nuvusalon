@@ -96,6 +96,23 @@ def get_faq() -> list[dict]:
     return _load().get("faq", [])
 
 
+# ── Write helpers (for dashboard editing) ──────────────────────
+
+def save_kb(data: dict) -> dict:
+    """Overwrite the entire knowledge base and clear cache."""
+    path = Path(get_settings().knowledge_base_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2))
+    return reload()
+
+
+def save_section(section: str, data) -> dict:
+    """Update a single top-level section of the KB and clear cache."""
+    kb = dict(_load())  # shallow copy
+    kb[section] = data
+    return save_kb(kb)
+
+
 def get_kb_summary_for_agent() -> str:
     """
     Return a formatted text summary of the entire KB
