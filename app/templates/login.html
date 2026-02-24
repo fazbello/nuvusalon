@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{salon_name}} — Staff Login</title>
+  <style>
+    :root {
+      --bg: #0f0f1a; --surface: #1a1a2e; --border: #2a2a4a;
+      --text: #e0e0e0; --muted: #888;
+      --accent: #667eea; --accent2: #764ba2;
+      --red: #ef4444; --green: #10b981;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+
+    .logo {
+      font-size: 22px; font-weight: 800; margin-bottom: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .subtitle { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 36px 40px; width: 100%; max-width: 380px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.4);
+    }
+    .card h2 {
+      font-size: 18px; font-weight: 700; margin-bottom: 24px;
+      text-align: center; color: var(--text);
+    }
+
+    .fg { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+    .fg label { font-size: 13px; font-weight: 600; color: var(--muted); }
+    .fg input {
+      padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 9px;
+      background: var(--bg); color: var(--text); font-size: 14px; font-family: inherit;
+      transition: border .2s;
+    }
+    .fg input:focus { outline: none; border-color: var(--accent); }
+
+    .error-msg {
+      background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.4);
+      color: #fca5a5; padding: 10px 14px; border-radius: 8px;
+      font-size: 13px; margin-bottom: 16px; display: none;
+    }
+    .error-msg.show { display: block; }
+
+    .btn-login {
+      width: 100%; padding: 13px; border-radius: 10px; font-size: 15px; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff; border: none; cursor: pointer; transition: .2s;
+      box-shadow: 0 4px 16px rgba(102,126,234,.35);
+    }
+    .btn-login:hover { opacity: .9; transform: translateY(-1px); }
+    .btn-login:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    .back-link {
+      display: block; text-align: center; margin-top: 20px;
+      font-size: 13px; color: var(--muted); text-decoration: none;
+    }
+    .back-link:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<div class="logo">{{salon_name}}</div>
+<p class="subtitle">Staff Portal</p>
+
+<div class="card">
+  <h2>Sign In</h2>
+
+  <div class="error-msg {{error_class}}" id="err">{{error_message}}</div>
+
+  <form method="POST" action="/login" id="login-form">
+    <div class="fg">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autocomplete="username"
+             placeholder="admin" required value="{{prefill_username}}">
+    </div>
+    <div class="fg">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password"
+             placeholder="••••••••" required>
+    </div>
+    <button type="submit" class="btn-login" id="login-btn">Sign In</button>
+  </form>
+
+  <a href="/" class="back-link">&larr; Back to website</a>
+</div>
+
+<script>
+  document.getElementById('login-form').addEventListener('submit', function() {
+    const btn = document.getElementById('login-btn');
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+  });
+
+  // Show error if present
+  const err = document.getElementById('err');
+  if (err.textContent.trim()) err.classList.add('show');
+</script>
+</body>
+</html>

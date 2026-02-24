@@ -43,9 +43,16 @@ class Settings(BaseSettings):
     vapi_phone_number_id: str = ""  # VAPI phone number resource ID
     vapi_server_secret: str = ""  # Webhook signature secret
 
+    # ── AI Provider ────────────────────────────────────────────
+    ai_provider: str = "gemini"  # "gemini" | "openai"
+
     # ── Gemini AI ──────────────────────────────────────────────
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash"
+
+    # ── OpenAI ─────────────────────────────────────────────────
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
 
     # ── Google Service Account (JSON string or file path) ──────
     google_service_account_json: str = ""  # Raw JSON string
@@ -64,6 +71,11 @@ class Settings(BaseSettings):
     from_email: str = ""  # Verified sender
     salon_notification_email: str = ""  # Where the salon receives alerts
     salon_name: str = "Nuvu Salon & Spa"
+
+    # ── Dashboard Auth ─────────────────────────────────────────
+    dashboard_username: str = "admin"
+    dashboard_password: str = ""  # Required to access dashboard
+    dashboard_secret: str = ""    # HMAC signing key for session cookies
 
     # ── Knowledge base ─────────────────────────────────────────
     knowledge_base_path: str = "knowledge_base/salon_info.json"

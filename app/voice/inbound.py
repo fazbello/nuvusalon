@@ -2,11 +2,12 @@
 Inbound call handler.
 
 Provider-agnostic: works with Twilio, Telnyx, or VAPI.
-The active provider is selected via VOICE_PROVIDER env var.
+The active VoIP provider is selected via VOICE_PROVIDER env var.
+The active AI provider (Gemini or OpenAI) is selected via AI_PROVIDER env var.
 
 Conversation loop:
   1. POST /voice/inbound          → greeting + first Gather
-  2. POST /voice/process-speech   → Gemini response + next Gather (loops)
+  2. POST /voice/process-speech   → AI response + next Gather (loops)
   3. POST /voice/status           → call ended, log transcript
 """
 
@@ -14,7 +15,7 @@ from __future__ import annotations
 
 import logging
 
-from app.ai.gemini_agent import get_inbound_response
+from app.ai.dispatcher import get_inbound_response
 from app.config import get_settings
 from app.integrations.email_sender import (
     send_booking_confirmation,
