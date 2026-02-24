@@ -170,7 +170,7 @@ async def _book_appointment(session: CallSession, settings) -> str:
 
 
 async def _finalize_call(session: CallSession, appointment_booked: bool) -> None:
-    """Log transcript and clean up session."""
+    """Log transcript, update learner stats, and clean up session."""
     try:
         record = TranscriptRecord(
             call_sid=session.call_sid,
@@ -186,6 +186,17 @@ async def _finalize_call(session: CallSession, appointment_booked: bool) -> None
         log_transcript(record)
     except Exception as exc:
         logger.error("Failed to log transcript: %s", exc)
+
+    # Update call statistics for the Insights dashboard
+    try:
+        from app.ai.learner import record_call
+        record_call(
+            call_type="inbound",
+            appointment_data=session.appointment.model_dump() if appointment_booked else None,
+            booked=appointment_booked,
+        )
+    except Exception as exc:
+        logger.debug("Learner record_call skipped: %s", exc)
     finally:
         end_session(session.call_sid)
 

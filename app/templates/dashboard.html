@@ -293,6 +293,7 @@
       <div class="tab" data-tab="transcripts">Call Transcripts</div>
       <div class="tab" data-tab="appointments">Appointments</div>
       <div class="tab" data-tab="active">Active Calls</div>
+      <div class="tab" data-tab="insights">Insights</div>
       <div class="tab" data-tab="setup">Twilio Setup</div>
       <div class="tab" data-tab="configure">Configure</div>
     </div>
@@ -392,6 +393,49 @@
         <div id="activeCallsBody">
           <div class="loading">Checking for active calls...</div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Insights ───────────────────────────── -->
+    <div class="tab-content" id="tab-insights">
+      <!-- Stat cards -->
+      <div class="status-grid" id="insight-cards" style="margin-bottom:20px">
+        <div class="stat-card"><div class="label">Total Calls</div><div class="value" id="ins-total">—</div></div>
+        <div class="stat-card"><div class="label">Bookings Made</div><div class="value" id="ins-bookings">—</div></div>
+        <div class="stat-card"><div class="label">Inbound</div><div class="value" id="ins-inbound">—</div></div>
+        <div class="stat-card"><div class="label">Outbound</div><div class="value" id="ins-outbound">—</div></div>
+        <div class="stat-card"><div class="label">Peak Hour</div><div class="value" id="ins-peak-hour">—</div></div>
+        <div class="stat-card"><div class="label">Busiest Day</div><div class="value" id="ins-peak-day">—</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <!-- Top services -->
+        <div class="panel">
+          <h2 style="margin-bottom:16px">Top Booked Services</h2>
+          <div id="ins-services"><div class="loading">Loading…</div></div>
+        </div>
+
+        <!-- Unknown phrases -->
+        <div class="panel">
+          <h2 style="margin-bottom:4px">Caller Phrases to Review</h2>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
+            Things callers said that the rule engine couldn't handle.
+            Add common ones to your FAQ in Configure → FAQ.
+          </p>
+          <div id="ins-unknowns"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:20px">
+        <h2 style="margin-bottom:14px">AI Provider</h2>
+        <p style="font-size:13px;color:var(--muted);line-height:1.7">
+          <strong style="color:var(--text)">Rule-Based (Free)</strong> — uses keyword matching and your knowledge base.
+          Zero API cost. Handles bookings, hours, location, services and FAQ automatically.
+          Unknown phrases are logged here for you to review.<br><br>
+          <strong style="color:var(--text)">Gemini / OpenAI</strong> — uses AI for more natural, flexible conversations.
+          If the API fails or credits run out, the system automatically falls back to the rule engine
+          so callers always get a response.
+        </p>
       </div>
     </div>
 
@@ -629,12 +673,14 @@
                 <div class="form-group full">
                   <label>Active AI Provider</label>
                   <select id="cfg-ai-provider" onchange="toggleAIProviderFields()">
+                    <option value="rules">Rule-Based (Free — no API cost)</option>
                     <option value="gemini">Google Gemini</option>
                     <option value="openai">OpenAI (ChatGPT)</option>
                   </select>
                   <small style="color:var(--muted);font-size:11px;margin-top:4px;display:block">
-                    API keys are set as Railway environment variables (GEMINI_API_KEY / OPENAI_API_KEY).
-                    This setting controls which provider handles call conversations.
+                    <strong>Rule-Based</strong>: zero cost, uses keyword matching + knowledge base. Handles ~80% of calls.<br>
+                    <strong>Gemini / OpenAI</strong>: natural AI conversations. Automatically falls back to rules if API fails.
+                    API keys set via GEMINI_API_KEY / OPENAI_API_KEY in Railway Variables.
                   </small>
                 </div>
 
@@ -735,6 +781,7 @@
         if (tab.dataset.tab === 'transcripts') loadTranscripts();
         if (tab.dataset.tab === 'appointments') loadAppointments();
         if (tab.dataset.tab === 'active') loadActiveCalls();
+        if (tab.dataset.tab === 'insights') loadInsights();
         if (tab.dataset.tab === 'configure') loadConfigData();
         if (tab.dataset.tab === 'setup') loadSetup();
       });
@@ -1320,6 +1367,81 @@
       const provider = document.getElementById('cfg-ai-provider').value;
       document.getElementById('gemini-fields').style.display = provider === 'gemini' ? '' : 'none';
       document.getElementById('openai-fields').style.display = provider === 'openai' ? '' : 'none';
+    }
+
+    // ── Insights Tab ───────────────────────────────
+    let _insightsLoaded = false;
+
+    async function loadInsights() {
+      if (_insightsLoaded) return;
+      try {
+        const [statsRes, phrasesRes] = await Promise.all([
+          fetch('/api/insights'), fetch('/api/unknown-phrases?limit=30')
+        ]);
+        const stats = await statsRes.json();
+        const phraseData = await phrasesRes.json();
+
+        document.getElementById('ins-total').textContent    = stats.total_calls ?? 0;
+        document.getElementById('ins-bookings').textContent = stats.total_bookings ?? 0;
+        document.getElementById('ins-inbound').textContent  = stats.inbound_calls ?? 0;
+        document.getElementById('ins-outbound').textContent = stats.outbound_calls ?? 0;
+        document.getElementById('ins-peak-hour').textContent = stats.peak_hour_label ?? 'N/A';
+        document.getElementById('ins-peak-day').textContent  = stats.peak_day_label ?? 'N/A';
+
+        // Top services
+        const svcs = stats.top_services || [];
+        const svcEl = document.getElementById('ins-services');
+        if (svcs.length === 0) {
+          svcEl.innerHTML = '<p style="color:var(--muted);font-size:13px">No bookings recorded yet.</p>';
+        } else {
+          const max = svcs[0][1] || 1;
+          svcEl.innerHTML = svcs.map(([name, count]) => `
+            <div style="margin-bottom:12px">
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+                <span>${esc(name)}</span><span style="color:var(--muted)">${count}</span>
+              </div>
+              <div style="background:var(--border);border-radius:4px;height:6px">
+                <div style="background:var(--accent);height:6px;border-radius:4px;width:${Math.round(count/max*100)}%"></div>
+              </div>
+            </div>`).join('');
+        }
+
+        // Unknown phrases
+        const phrases = (phraseData.phrases || []).filter(p => !p.reviewed);
+        const phEl = document.getElementById('ins-unknowns');
+        if (phrases.length === 0) {
+          phEl.innerHTML = '<p style="color:var(--green);font-size:13px">✓ No unreviewed phrases — great!</p>';
+        } else {
+          phEl.innerHTML = phrases.slice(0, 15).map(p => `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;
+              padding:8px 12px;background:var(--bg);border-radius:8px;font-size:12px">
+              <span style="flex:1;color:var(--text)">"${esc(p.phrase)}"</span>
+              <span style="color:var(--muted);white-space:nowrap">×${p.count}</span>
+              <button onclick="reviewPhrase('${esc(p.phrase).replace(/'/g,"\\'")}', this)"
+                style="background:none;border:1px solid var(--border);color:var(--muted);
+                  padding:3px 10px;border-radius:6px;cursor:pointer;font-size:11px">
+                Done
+              </button>
+            </div>`).join('');
+        }
+
+        _insightsLoaded = true;
+      } catch (err) {
+        console.error('Insights load failed:', err);
+      }
+    }
+
+    async function reviewPhrase(phrase, btn) {
+      btn.disabled = true;
+      await fetch('/api/unknown-phrases/review', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({phrase})
+      });
+      btn.closest('div').remove();
+    }
+
+    function esc(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
     async function testAIConnection() {

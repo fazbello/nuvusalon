@@ -508,6 +508,40 @@ async def reload_knowledge_base():
     return {"status": "reloaded", "sections": list(kb.keys())}
 
 
+@app.get("/api/insights")
+async def api_insights():
+    """Call statistics and learning data for the Insights dashboard tab."""
+    try:
+        from app.ai.learner import get_stats
+        return get_stats()
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@app.get("/api/unknown-phrases")
+async def api_unknown_phrases(limit: int = 50):
+    """Unknown caller phrases logged for admin review / FAQ improvement."""
+    try:
+        from app.ai.learner import get_unknown_phrases
+        return {"phrases": get_unknown_phrases(limit=limit)}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@app.post("/api/unknown-phrases/review")
+async def api_mark_reviewed(request: Request):
+    """Mark an unknown phrase as reviewed so it leaves the action list."""
+    try:
+        body = await request.json()
+        phrase = body.get("phrase", "")
+        if phrase:
+            from app.ai.learner import mark_reviewed
+            mark_reviewed(phrase)
+        return {"status": "ok"}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
 @app.post("/api/research")
 async def research_endpoint(question: str):
     """Use the active AI to research a salon/spa industry question."""
