@@ -662,10 +662,19 @@
                 </div>
               </div>
 
-              <div class="save-bar">
+              <div class="save-bar" style="flex-wrap:wrap;gap:10px">
                 <button class="btn btn-primary" onclick="saveVoiceSettings()">Save Voice & AI</button>
+                <button class="btn" id="test-ai-btn" onclick="testAIConnection()"
+                  style="background:var(--surface2);border:1px solid var(--border);color:var(--text)">
+                  &#9654; Test Connection
+                </button>
                 <span class="save-msg" id="cfg-voice-msg"></span>
               </div>
+
+              <!-- Test result box -->
+              <div id="ai-test-result" style="display:none;margin-top:14px;padding:14px 18px;
+                border-radius:10px;font-size:13px;line-height:1.6;font-family:monospace;
+                background:var(--bg);border:1px solid var(--border);white-space:pre-wrap"></div>
             </div>
           </div>
 
@@ -1311,6 +1320,46 @@
       const provider = document.getElementById('cfg-ai-provider').value;
       document.getElementById('gemini-fields').style.display = provider === 'gemini' ? '' : 'none';
       document.getElementById('openai-fields').style.display = provider === 'openai' ? '' : 'none';
+    }
+
+    async function testAIConnection() {
+      const btn = document.getElementById('test-ai-btn');
+      const box = document.getElementById('ai-test-result');
+      btn.disabled = true;
+      btn.textContent = '⏳ Testing…';
+      box.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/test-ai', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          box.style.borderColor = 'var(--green)';
+          box.style.color = 'var(--green)';
+          box.textContent =
+            `✅ Connection successful!\n` +
+            `Provider : ${data.provider}\n` +
+            `Model    : ${data.model}\n` +
+            `Reply    : ${data.reply}\n` +
+            (data.tokens_used !== undefined ? `Tokens   : ${data.tokens_used}\n` : '') +
+            (data.note ? `\nℹ️  ${data.note}` : '');
+        } else {
+          box.style.borderColor = 'var(--red)';
+          box.style.color = 'var(--red)';
+          box.textContent =
+            `❌ Connection failed\n` +
+            `Provider : ${data.provider || '?'}\n` +
+            `Error    : ${data.error}\n\n` +
+            `Check that your API key is set correctly in Railway → Variables.`;
+        }
+      } catch (err) {
+        box.style.borderColor = 'var(--red)';
+        box.style.color = 'var(--red)';
+        box.textContent = `❌ Request failed: ${err.message}`;
+      }
+
+      box.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = '▶ Test Connection';
     }
 
     function saveVoiceSettings() {
