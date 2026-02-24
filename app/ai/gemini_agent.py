@@ -30,6 +30,16 @@ logger = logging.getLogger(__name__)
 
 _client: genai.Client | None = None
 
+# Models known to work with the API; used to validate configured model names.
+_FALLBACK_MODEL = "gemini-2.0-flash"
+_KNOWN_MODELS: frozenset[str] = frozenset({
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-exp",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-pro",
+})
+
 
 def _get_client() -> genai.Client:
     global _client
@@ -109,17 +119,46 @@ def _sync_inbound(conversation_history: list[dict], appointment: AppointmentData
     if not last_msg:
         last_msg = "The customer just called."
 
-    chat = client.chats.create(
-        model=settings.gemini_model,
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            temperature=0.7,
-            max_output_tokens=300,
-        ),
-        history=history,
-    )
+    model = settings.gemini_model
+    if model not in _KNOWN_MODELS:
+        logger.warning(
+            "Configured gemini_model %r is not a known model — falling back to %s. "
+            "Fix: set gemini_model to a valid model in Configure > Voice & AI.",
+            model, _FALLBACK_MODEL,
+        )
+        model = _FALLBACK_MODEL
 
-    response = chat.send_message(last_msg)
+    try:
+        chat = client.chats.create(
+            model=model,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.7,
+                max_output_tokens=300,
+            ),
+            history=history,
+        )
+        response = chat.send_message(last_msg)
+    except Exception as exc:
+        exc_str = str(exc)
+        if ("404" in exc_str or "not found" in exc_str.lower()) and model != _FALLBACK_MODEL:
+            logger.warning(
+                "Gemini model %r not found (404) — retrying with %s. Error: %s",
+                model, _FALLBACK_MODEL, exc,
+            )
+            chat = client.chats.create(
+                model=_FALLBACK_MODEL,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.7,
+                    max_output_tokens=300,
+                ),
+                history=history,
+            )
+            response = chat.send_message(last_msg)
+        else:
+            raise
+
     return _parse_agent_response(response.text)
 
 
@@ -144,17 +183,46 @@ def _sync_outbound(conversation_history: list[dict], purpose: str, context: str)
     if not last_msg:
         last_msg = "The customer just answered the phone."
 
-    chat = client.chats.create(
-        model=settings.gemini_model,
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            temperature=0.7,
-            max_output_tokens=300,
-        ),
-        history=history,
-    )
+    model = settings.gemini_model
+    if model not in _KNOWN_MODELS:
+        logger.warning(
+            "Configured gemini_model %r is not a known model — falling back to %s. "
+            "Fix: set gemini_model to a valid model in Configure > Voice & AI.",
+            model, _FALLBACK_MODEL,
+        )
+        model = _FALLBACK_MODEL
 
-    response = chat.send_message(last_msg)
+    try:
+        chat = client.chats.create(
+            model=model,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.7,
+                max_output_tokens=300,
+            ),
+            history=history,
+        )
+        response = chat.send_message(last_msg)
+    except Exception as exc:
+        exc_str = str(exc)
+        if ("404" in exc_str or "not found" in exc_str.lower()) and model != _FALLBACK_MODEL:
+            logger.warning(
+                "Gemini model %r not found (404) — retrying with %s. Error: %s",
+                model, _FALLBACK_MODEL, exc,
+            )
+            chat = client.chats.create(
+                model=_FALLBACK_MODEL,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.7,
+                    max_output_tokens=300,
+                ),
+                history=history,
+            )
+            response = chat.send_message(last_msg)
+        else:
+            raise
+
     return _parse_agent_response(response.text)
 
 

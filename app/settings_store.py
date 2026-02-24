@@ -58,12 +58,48 @@ def load_overrides() -> dict[str, Any]:
         return {}
 
 
+def _sanitize(data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Normalise values before saving to prevent common operator mistakes.
+    - base_url: strip whitespace/trailing slashes, prepend https:// if missing
+    - gemini_model: warn if not a known valid model
+    """
+    out = dict(data)
+
+    if "base_url" in out and isinstance(out["base_url"], str):
+        url = out["base_url"].strip().rstrip("/")
+        if url and not url.startswith(("http://", "https://")):
+            url = f"https://{url}"
+            logger.warning(
+                "base_url saved without scheme — auto-corrected to %s. "
+                "Update the field to include the full https:// URL.", url
+            )
+        out["base_url"] = url
+
+    if "gemini_model" in out and isinstance(out["gemini_model"], str):
+        known = {
+            "gemini-2.0-flash", "gemini-2.0-flash-exp",
+            "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro",
+        }
+        model = out["gemini_model"].strip()
+        if model and model not in known:
+            logger.warning(
+                "gemini_model %r is not a recognised model name. "
+                "The agent will fall back to gemini-2.0-flash if the API rejects it. "
+                "Valid options: %s", model, ", ".join(sorted(known))
+            )
+        out["gemini_model"] = model
+
+    return out
+
+
 def save_overrides(data: dict[str, Any]) -> dict[str, Any]:
     """
     Replace all overrides with *data* (filtered to EDITABLE_KEYS).
     Returns the saved dict.
     """
     safe = {k: v for k, v in data.items() if k in EDITABLE_KEYS}
+    safe = _sanitize(safe)
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.write_text(json.dumps(safe, indent=2))
     _invalidate_caches()

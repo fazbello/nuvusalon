@@ -121,7 +121,15 @@ def get_base_url(request_host: str | None = None) -> str:
     settings = get_settings()
 
     if settings.base_url:
-        return settings.base_url.rstrip("/")
+        url = settings.base_url.strip().rstrip("/")
+        if not url.startswith(("http://", "https://")):
+            url = f"https://{url}"
+            logger.warning(
+                "BASE_URL %r is missing the https:// scheme — auto-corrected to %s. "
+                "Update BASE_URL in Railway Variables to use the full URL.",
+                settings.base_url, url,
+            )
+        return url
 
     # Railway automatically injects RAILWAY_PUBLIC_DOMAIN (e.g. "myapp.up.railway.app")
     railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
