@@ -1,8 +1,9 @@
 """
 Outbound call handler.
 
+Provider-agnostic: works with Twilio, Telnyx, or VAPI.
 Triggers calls to customers for appointment confirmations,
-reminders, and follow-ups via the Twilio REST API.
+reminders, and follow-ups.
 """
 
 from __future__ import annotations
@@ -10,13 +11,11 @@ from __future__ import annotations
 import json
 import logging
 
-from twilio.rest import Client as TwilioClient
-from twilio.twiml.voice_response import Gather, VoiceResponse
-
 from app.ai.gemini_agent import get_outbound_response
 from app.config import get_settings
 from app.models.appointment import CallType, OutboundCallRequest, TranscriptRecord
 from app.integrations.google_sheets import log_transcript
+from app.voice.providers import get_provider
 from app.voice.session import (
     create_session,
     end_session,
@@ -28,24 +27,19 @@ logger = logging.getLogger(__name__)
 
 def initiate_outbound_call(request: OutboundCallRequest) -> dict:
     """
-    Start an outbound call using Twilio REST API.
+    Start an outbound call via the configured provider.
     Returns the call SID and status.
     """
+    provider = get_provider()
     settings = get_settings()
-    client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
 
-    # TwiML URL — Twilio will hit this when the customer answers
-    twiml_url = f"{settings.base_url}/voice/outbound-answer"
+    answer_url = f"{settings.base_url}/voice/outbound-answer"
     status_url = f"{settings.base_url}/voice/status"
 
-    call = client.calls.create(
+    result = provider.initiate_call(
         to=request.phone_number,
-        from_=settings.twilio_phone_number,
-        url=twiml_url,
-        status_callback=status_url,
-        status_callback_event=["completed", "failed", "busy", "no-answer"],
-        # Pass context via custom parameters
-        status_callback_method="POST",
+        answer_url=answer_url,
+        status_url=status_url,
     )
 
     # Pre-create session so context is ready when the call connects
@@ -56,21 +50,25 @@ def initiate_outbound_call(request: OutboundCallRequest) -> dict:
         context = request.custom_message
 
     create_session(
-        call_sid=call.sid,
-        from_number=settings.twilio_phone_number,
+        call_sid=result.call_sid,
+        from_number=provider.phone_number,
         to_number=request.phone_number,
         call_type=CallType.OUTBOUND,
         purpose=request.purpose,
         context=context,
     )
 
-    logger.info("Outbound call initiated: %s → %s (SID: %s)", settings.twilio_phone_number, request.phone_number, call.sid)
+    logger.info(
+        "Outbound call initiated via %s: %s → %s (SID: %s)",
+        provider.name, provider.phone_number, request.phone_number, result.call_sid,
+    )
 
     return {
-        "call_sid": call.sid,
-        "status": call.status,
+        "call_sid": result.call_sid,
+        "status": result.status,
         "to": request.phone_number,
         "purpose": request.purpose,
+        "provider": provider.name,
     }
 
 
@@ -79,20 +77,16 @@ async def handle_outbound_answer(form_data: dict) -> str:
     Webhook hit when the outbound call is answered.
     Deliver the opening message based on call purpose.
     """
-    call_sid = form_data.get("CallSid", "")
+    provider = get_provider()
+    wh = provider.parse_webhook(form_data)
     settings = get_settings()
 
-    session = get_session(call_sid)
+    session = get_session(wh.call_sid)
     if not session:
-        # Shouldn't happen, but be safe
-        response = VoiceResponse()
-        response.say(
+        return provider.build_say_hangup(
             f"Hello, this is {settings.salon_name}. We apologize, but we encountered "
             "a technical issue. We'll call you back shortly. Goodbye.",
-            voice=settings.tts_voice,
         )
-        response.hangup()
-        return str(response)
 
     # Get the opening message from Gemini
     agent_response = await get_outbound_response(
@@ -103,41 +97,27 @@ async def handle_outbound_answer(form_data: dict) -> str:
 
     session.add_agent_message(agent_response.message)
 
-    response = VoiceResponse()
-    gather = Gather(
-        input="speech",
-        action="/voice/outbound-process",
-        method="POST",
-        timeout=settings.gather_timeout,
-        speech_timeout=settings.speech_timeout,
-        language=settings.language,
+    return provider.build_gather(
+        message=agent_response.message,
+        action_url="/voice/outbound-process",
+        timeout_url="/voice/outbound-answer",
+        timeout_message="I didn't hear a response. I'll try again.",
     )
-    gather.say(agent_response.message, voice=settings.tts_voice)
-    response.append(gather)
-    response.say(
-        "I didn't hear a response. I'll try again.",
-        voice=settings.tts_voice,
-    )
-    response.redirect("/voice/outbound-answer", method="POST")
-    return str(response)
 
 
 async def handle_outbound_speech(form_data: dict) -> str:
     """
     Process customer speech during an outbound call.
     """
-    call_sid = form_data.get("CallSid", "")
-    speech_result = form_data.get("SpeechResult", "")
+    provider = get_provider()
+    wh = provider.parse_webhook(form_data)
     settings = get_settings()
 
-    session = get_session(call_sid)
+    session = get_session(wh.call_sid)
     if not session:
-        response = VoiceResponse()
-        response.say("Thank you. Goodbye.", voice=settings.tts_voice)
-        response.hangup()
-        return str(response)
+        return provider.build_say_hangup("Thank you. Goodbye.")
 
-    session.add_customer_message(speech_result)
+    session.add_customer_message(wh.speech_result)
 
     agent_response = await get_outbound_response(
         conversation_history=session.history,
@@ -150,35 +130,20 @@ async def handle_outbound_speech(form_data: dict) -> str:
 
     session.add_agent_message(agent_response.message)
 
-    response = VoiceResponse()
-
     if agent_response.action == "end":
-        response.say(agent_response.message, voice=settings.tts_voice)
-        response.say(
-            f"Thank you, and have a wonderful day! Goodbye.",
-            voice=settings.tts_voice,
-        )
-        response.hangup()
         await _finalize_outbound(session)
-        return str(response)
+        return provider.build_say_hangup(
+            agent_response.message,
+            "Thank you, and have a wonderful day! Goodbye.",
+        )
 
     # Continue conversation
-    gather = Gather(
-        input="speech",
-        action="/voice/outbound-process",
-        method="POST",
-        timeout=settings.gather_timeout,
-        speech_timeout=settings.speech_timeout,
-        language=settings.language,
+    return provider.build_gather(
+        message=agent_response.message,
+        action_url="/voice/outbound-process",
+        timeout_url="/voice/outbound-answer",
+        timeout_message="I didn't catch that. Could you say that again?",
     )
-    gather.say(agent_response.message, voice=settings.tts_voice)
-    response.append(gather)
-    response.say(
-        "I didn't catch that. Could you say that again?",
-        voice=settings.tts_voice,
-    )
-    response.redirect("/voice/outbound-answer", method="POST")
-    return str(response)
 
 
 async def _finalize_outbound(session) -> None:

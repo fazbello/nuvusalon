@@ -1,9 +1,8 @@
 """
 Inbound call handler.
 
-Twilio sends webhooks here when a call arrives on the salon number.
-We use <Gather input="speech"> for voice recognition, feed transcripts
-to Gemini, and respond with TwiML <Say>.
+Provider-agnostic: works with Twilio, Telnyx, or VAPI.
+The active provider is selected via VOICE_PROVIDER env var.
 
 Conversation loop:
   1. POST /voice/inbound          → greeting + first Gather
@@ -14,9 +13,6 @@ Conversation loop:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-
-from twilio.twiml.voice_response import Gather, VoiceResponse
 
 from app.ai.gemini_agent import get_inbound_response
 from app.config import get_settings
@@ -26,7 +22,8 @@ from app.integrations.email_sender import (
 )
 from app.integrations.google_calendar import create_appointment_event
 from app.integrations.google_sheets import log_appointment, log_transcript
-from app.models.appointment import CallType, ConversationState, TranscriptRecord
+from app.models.appointment import CallType, TranscriptRecord
+from app.voice.providers import get_provider
 from app.voice.session import (
     CallSession,
     create_session,
@@ -37,41 +34,18 @@ from app.voice.session import (
 logger = logging.getLogger(__name__)
 
 
-def _gather(response: VoiceResponse, message: str) -> VoiceResponse:
-    """Append a <Say> + <Gather speech> to a TwiML response."""
-    settings = get_settings()
-    gather = Gather(
-        input="speech",
-        action="/voice/process-speech",
-        method="POST",
-        timeout=settings.gather_timeout,
-        speech_timeout=settings.speech_timeout,
-        language=settings.language,
-    )
-    gather.say(message, voice=settings.tts_voice)
-    response.append(gather)
-    # If no input, prompt again
-    response.say(
-        "I didn't catch that. Could you please repeat?",
-        voice=settings.tts_voice,
-    )
-    response.redirect("/voice/inbound", method="POST")
-    return response
-
-
 async def handle_inbound_call(form_data: dict) -> str:
     """
     First webhook — a new call just arrived.
     Greet and start gathering speech.
     """
-    call_sid = form_data.get("CallSid", "")
-    from_number = form_data.get("From", "")
-    to_number = form_data.get("To", "")
+    provider = get_provider()
+    wh = provider.parse_webhook(form_data)
 
     session = create_session(
-        call_sid=call_sid,
-        from_number=from_number,
-        to_number=to_number,
+        call_sid=wh.call_sid,
+        from_number=wh.from_number,
+        to_number=wh.to_number,
         call_type=CallType.INBOUND,
     )
 
@@ -84,8 +58,12 @@ async def handle_inbound_call(form_data: dict) -> str:
     )
     session.add_agent_message(greeting)
 
-    response = VoiceResponse()
-    return str(_gather(response, greeting))
+    return provider.build_gather(
+        message=greeting,
+        action_url="/voice/process-speech",
+        timeout_url="/voice/inbound",
+        timeout_message="I didn't catch that. Could you please repeat?",
+    )
 
 
 async def handle_speech_input(form_data: dict) -> str:
@@ -93,22 +71,21 @@ async def handle_speech_input(form_data: dict) -> str:
     Looping webhook — customer said something.
     Feed to Gemini, get response, continue or book.
     """
-    call_sid = form_data.get("CallSid", "")
-    speech_result = form_data.get("SpeechResult", "")
-    confidence = form_data.get("Confidence", "0")
+    provider = get_provider()
+    wh = provider.parse_webhook(form_data)
 
-    session = get_session(call_sid)
+    session = get_session(wh.call_sid)
     if not session:
         # Session lost (restart, etc.) — recreate
         session = create_session(
-            call_sid=call_sid,
-            from_number=form_data.get("From", ""),
-            to_number=form_data.get("To", ""),
+            call_sid=wh.call_sid,
+            from_number=wh.from_number,
+            to_number=wh.to_number,
             call_type=CallType.INBOUND,
         )
 
-    logger.info("Call %s — speech (%s confidence): %s", call_sid, confidence, speech_result)
-    session.add_customer_message(speech_result)
+    logger.info("Call %s — speech (%s confidence): %s", wh.call_sid, wh.confidence, wh.speech_result)
+    session.add_customer_message(wh.speech_result)
 
     # Ask Gemini
     agent_response = await get_inbound_response(
@@ -122,46 +99,40 @@ async def handle_speech_input(form_data: dict) -> str:
 
     session.add_agent_message(agent_response.message)
 
-    response = VoiceResponse()
     settings = get_settings()
 
     if agent_response.action == "book":
-        # All info collected and confirmed — book the appointment
-        return await _book_appointment(session, response, settings)
+        return await _book_appointment(session, settings)
 
     elif agent_response.action == "end":
-        response.say(agent_response.message, voice=settings.tts_voice)
-        response.say(
-            f"Thank you for calling {settings.salon_name}. Goodbye!",
-            voice=settings.tts_voice,
-        )
-        response.hangup()
         await _finalize_call(session, appointment_booked=False)
-        return str(response)
+        return provider.build_say_hangup(
+            agent_response.message,
+            f"Thank you for calling {settings.salon_name}. Goodbye!",
+        )
 
     elif agent_response.action == "transfer":
-        response.say(agent_response.message, voice=settings.tts_voice)
-        response.say(
-            "Let me connect you with a team member. Please hold.",
-            voice=settings.tts_voice,
+        return provider.build_say_dial(
+            agent_response.message,
+            provider.phone_number,
         )
-        # Dial the salon's real number for human hand-off
-        response.dial(settings.twilio_phone_number)
-        return str(response)
 
     else:
         # "continue" or "confirm" — keep gathering
-        return str(_gather(response, agent_response.message))
+        return provider.build_gather(
+            message=agent_response.message,
+            action_url="/voice/process-speech",
+            timeout_url="/voice/inbound",
+            timeout_message="I didn't catch that. Could you please repeat?",
+        )
 
 
-async def _book_appointment(
-    session: CallSession,
-    response: VoiceResponse,
-    settings,
-) -> str:
+async def _book_appointment(session: CallSession, settings) -> str:
     """Process the actual booking: Calendar + Sheets + Email."""
+    provider = get_provider()
     appointment = session.appointment
     calendar_link = ""
+
     try:
         event = create_appointment_event(appointment)
         calendar_link = event.get("htmlLink", "")
@@ -173,7 +144,6 @@ async def _book_appointment(
     except Exception as exc:
         logger.error("Sheets logging failed: %s", exc)
 
-    # Send emails (non-blocking — don't fail the call if email fails)
     try:
         send_booking_confirmation(appointment)
         send_staff_notification(appointment)
@@ -194,11 +164,8 @@ async def _book_appointment(
         f"Thank you for choosing {settings.salon_name}! Have a great day!"
     )
 
-    response.say(confirmation_msg, voice=settings.tts_voice)
-    response.hangup()
-
     await _finalize_call(session, appointment_booked=True)
-    return str(response)
+    return provider.build_say_hangup(confirmation_msg)
 
 
 async def _finalize_call(session: CallSession, appointment_booked: bool) -> None:
@@ -224,11 +191,11 @@ async def _finalize_call(session: CallSession, appointment_booked: bool) -> None
 
 async def handle_call_status(form_data: dict) -> None:
     """Status callback — call ended, ensure we clean up."""
-    call_sid = form_data.get("CallSid", "")
-    status = form_data.get("CallStatus", "")
-    logger.info("Call %s status: %s", call_sid, status)
+    provider = get_provider()
+    wh = provider.parse_webhook(form_data)
+    logger.info("Call %s status: %s", wh.call_sid, wh.call_status)
 
-    if status in ("completed", "failed", "busy", "no-answer", "canceled"):
-        session = get_session(call_sid)
+    if wh.call_status in ("completed", "failed", "busy", "no-answer", "canceled"):
+        session = get_session(wh.call_sid)
         if session:
             await _finalize_call(session, appointment_booked=session.appointment_booked)

@@ -2,7 +2,7 @@
 In-memory call session store.
 
 Tracks conversation state, collected appointment data, and
-full transcript for every active call (keyed by Twilio CallSid).
+full transcript for every active call (keyed by provider call ID).
 
 For multi-instance scaling, swap this for Redis.
 """
