@@ -22,6 +22,7 @@ SETTINGS_FILE = Path("config/salon_settings.json")
 EDITABLE_KEYS: set[str] = {
     # General
     "salon_name",
+    "greeting_message",
     "base_url",
     # Voice provider selection
     "voice_provider",

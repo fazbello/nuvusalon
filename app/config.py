@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     from_email: str = ""  # Verified sender
     salon_notification_email: str = ""  # Where the salon receives alerts
     salon_name: str = "Nuvu Salon & Spa"
+    greeting_message: str = ""  # Custom first message when a customer calls; uses default if empty
 
     # ── Dashboard Auth ─────────────────────────────────────────
     dashboard_username: str = "admin"

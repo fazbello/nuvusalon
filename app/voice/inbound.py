@@ -51,7 +51,8 @@ async def handle_inbound_call(form_data: dict) -> str:
     )
 
     settings = get_settings()
-    greeting = (
+    _custom = settings.greeting_message.strip()
+    greeting = _custom if _custom else (
         f"Thank you for calling {settings.salon_name}! "
         f"I'm your booking assistant and I can help you schedule an appointment, "
         f"answer questions about our services, or connect you with our team. "

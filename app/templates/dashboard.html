@@ -556,6 +556,14 @@
                   <input type="email" id="cfg-salon-email"></div>
                 <div class="form-group full"><label>Website</label>
                   <input type="url" id="cfg-salon-website"></div>
+                <div class="form-group full">
+                  <label>Opening Greeting — first message played when a customer calls</label>
+                  <textarea id="cfg-greeting" rows="3"
+                    placeholder="Thank you for calling [Salon Name]! I can help you book an appointment, answer questions, or connect you with our team. How can I help?"></textarea>
+                  <small style="color:var(--muted);font-size:11px;margin-top:4px;display:block">
+                    Leave blank to use the default. Tip: keep it under 30 words for natural-sounding speech.
+                  </small>
+                </div>
               </div>
               <div class="save-bar">
                 <button class="btn btn-primary" onclick="saveSalonInfo()">Save Salon Info</button>
@@ -1051,6 +1059,9 @@
       document.getElementById('cfg-salon-email').value = salon.email || '';
       document.getElementById('cfg-salon-website').value = salon.website || '';
 
+      const g = _settingsData.settings || {};
+      if (g.greeting_message) document.getElementById('cfg-greeting').value = g.greeting_message.value ?? g.greeting_message;
+
       renderLocations(_kbData.locations || []);
       renderServices(_kbData.services || []);
       renderTeam(_kbData.technicians || []);
@@ -1355,7 +1366,10 @@
         website: document.getElementById('cfg-salon-website').value,
       };
       saveKBSection('salon', data, 'cfg-salon-msg');
-      if (data.name) saveSettingsGroup({salon_name: data.name}, 'cfg-salon-msg');
+      const settingsPayload = {};
+      if (data.name) settingsPayload.salon_name = data.name;
+      settingsPayload.greeting_message = document.getElementById('cfg-greeting').value;
+      saveSettingsGroup(settingsPayload, 'cfg-salon-msg');
     }
     function saveLocations() { saveKBSection('locations', collectLocations(), 'cfg-locations-msg'); }
     function saveServices() { saveKBSection('services', collectServices(), 'cfg-services-msg'); }
