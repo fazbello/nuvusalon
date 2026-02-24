@@ -152,7 +152,7 @@ async def handle_outbound_speech(form_data: dict) -> str:
 
 
 async def _finalize_outbound(session) -> None:
-    """Log outbound call transcript."""
+    """Log outbound call transcript and update learner stats."""
     try:
         record = TranscriptRecord(
             call_sid=session.call_sid,
@@ -167,5 +167,11 @@ async def _finalize_outbound(session) -> None:
         log_transcript(record)
     except Exception as exc:
         logger.error("Failed to log outbound transcript: %s", exc)
+
+    try:
+        from app.ai.learner import record_call
+        record_call(call_type="outbound", booked=False)
+    except Exception as exc:
+        logger.debug("Learner record_call skipped: %s", exc)
     finally:
         end_session(session.call_sid)

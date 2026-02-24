@@ -108,9 +108,9 @@ def _sanitize(data: dict[str, Any]) -> dict[str, Any]:
 
     if "ai_provider" in out and isinstance(out["ai_provider"], str):
         provider = out["ai_provider"].strip().lower()
-        if provider not in ("gemini", "openai"):
-            logger.warning("ai_provider %r unknown — defaulting to gemini", provider)
-            provider = "gemini"
+        if provider not in ("gemini", "openai", "rules"):
+            logger.warning("ai_provider %r unknown — defaulting to rules", provider)
+            provider = "rules"
         out["ai_provider"] = provider
 
     return out
