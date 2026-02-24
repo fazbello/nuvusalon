@@ -108,7 +108,7 @@ async def call_status(request: Request):
 # ── Outbound ───────────────────────────────────────────────────
 
 @router.post("/outbound-call")
-async def trigger_outbound_call(request: OutboundCallRequest):
+async def trigger_outbound_call(outbound_request: OutboundCallRequest, request: Request):
     """
     API endpoint to initiate an outbound call.
 
@@ -125,7 +125,7 @@ async def trigger_outbound_call(request: OutboundCallRequest):
             }
         }
     """
-    result = initiate_outbound_call(request)
+    result = initiate_outbound_call(outbound_request, request_host=request.headers.get("host"))
     return result
 
 
