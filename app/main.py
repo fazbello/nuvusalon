@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.ai.gemini_agent import research
-from app.config import get_settings
+from app.config import get_base_url, get_settings
 from app.integrations.google_sheets import (
     get_appointments,
     get_transcripts,
@@ -176,6 +176,80 @@ async def health():
         "gemini_configured": bool(settings.gemini_api_key),
         "sheets_configured": bool(settings.google_sheet_id),
         "email_configured": bool(settings.sendgrid_api_key),
+    }
+
+
+# ── Twilio misconfiguration safety net ────────────────────────
+
+@app.post("/")
+async def root_post_fallback(request: Request):
+    """
+    Twilio sometimes POSTs to '/' when the webhook URL is misconfigured
+    (e.g. BASE_URL not set, so answer_url was just a path with no host).
+    Log the payload so we can diagnose it, then redirect to /voice/inbound
+    so the call still works rather than playing the Twilio error message.
+    """
+    from fastapi.responses import RedirectResponse
+    try:
+        form = await request.form()
+        body = dict(form)
+    except Exception:
+        body = {}
+    logger.warning(
+        "Twilio hit POST / instead of a voice webhook — probable cause: "
+        "BASE_URL or RAILWAY_PUBLIC_DOMAIN not set. "
+        "Configure BASE_URL in Railway Variables. Payload: %s", body
+    )
+    # Forward Twilio to the inbound handler so the caller hears a greeting
+    return RedirectResponse(url="/voice/inbound", status_code=307)
+
+
+# ── Webhook URL diagnostic ─────────────────────────────────────
+
+@app.get("/api/webhook-urls")
+async def webhook_urls(request: Request):
+    """
+    Returns the exact URLs to paste into the Twilio console.
+    Also shows which base URL was detected and how.
+    """
+    import os
+    settings = get_settings()
+    host = request.headers.get("host", "")
+
+    # Determine source of base URL
+    if settings.base_url:
+        base = settings.base_url.rstrip("/")
+        source = "BASE_URL env var"
+    elif os.environ.get("RAILWAY_PUBLIC_DOMAIN"):
+        base = f"https://{os.environ['RAILWAY_PUBLIC_DOMAIN'].rstrip('/')}"
+        source = "RAILWAY_PUBLIC_DOMAIN env var (auto-detected)"
+    elif host:
+        base = f"https://{host.rstrip('/')}"
+        source = "HTTP Host header (unreliable — set BASE_URL)"
+    else:
+        base = ""
+        source = "NOT CONFIGURED — set BASE_URL in Railway Variables"
+
+    return {
+        "base_url": base,
+        "source": source,
+        "configured": bool(base),
+        "twilio_console_settings": {
+            "inbound_webhook": {
+                "url": f"{base}/voice/inbound",
+                "method": "HTTP POST",
+                "description": "Paste this into: Twilio Console → Phone Numbers → your number → Voice → A call comes in",
+            },
+            "status_callback": {
+                "url": f"{base}/voice/status",
+                "method": "HTTP POST",
+                "description": "Optional: paste into Call Status Callback URL",
+            },
+        },
+        "note": (
+            "If base_url shows 'NOT CONFIGURED', add BASE_URL=https://your-app.up.railway.app "
+            "in Railway → your service → Variables, then redeploy."
+        ) if not base else "URLs look correct. Copy inbound_webhook URL into Twilio Console.",
     }
 
 
