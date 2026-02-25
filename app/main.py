@@ -430,10 +430,19 @@ async def api_book(request: Request):
             content={"error": f"Missing required fields: {', '.join(missing)}"},
         )
 
+    # Create Google Calendar event
+    calendar_link = ""
+    try:
+        from app.integrations.google_calendar import create_appointment_event
+        event = create_appointment_event(appt)
+        calendar_link = event.get("htmlLink", "")
+    except Exception as exc:
+        logger.warning("Online booking — failed to create calendar event: %s", exc)
+
     # Log to Google Sheets
     try:
         from app.integrations.google_sheets import log_appointment
-        log_appointment(appt, calendar_link="")
+        log_appointment(appt, calendar_link=calendar_link)
     except Exception as exc:
         logger.warning("Online booking — failed to log to Sheets: %s", exc)
 

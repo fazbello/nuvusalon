@@ -153,15 +153,37 @@ async def handle_outbound_speech(form_data: dict) -> str:
 
 async def _finalize_outbound(session) -> None:
     """Log outbound call transcript and update learner stats."""
+    transcript_text = session.get_transcript()
+    started_at = session.created_at.strftime("%Y-%m-%d %H:%M:%S")
+    duration = session.duration_seconds()
+
+    # Always save to local JSON store (works without Sheets)
+    try:
+        from app.integrations.local_store import save_transcript as local_save_transcript
+        local_save_transcript(
+            call_sid=session.call_sid,
+            call_type=session.call_type.value,
+            from_number=session.from_number,
+            to_number=session.to_number,
+            started_at=started_at,
+            duration_seconds=duration,
+            transcript=transcript_text,
+            appointment_booked=session.appointment_booked,
+            appointment_data=None,
+        )
+    except Exception as exc:
+        logger.warning("local_store.save_transcript failed [%s]: %s", type(exc).__name__, exc)
+
+    # Also sync to Google Sheets (optional)
     try:
         record = TranscriptRecord(
             call_sid=session.call_sid,
             call_type=session.call_type,
             from_number=session.from_number,
             to_number=session.to_number,
-            started_at=session.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            duration_seconds=session.duration_seconds(),
-            transcript=session.get_transcript(),
+            started_at=started_at,
+            duration_seconds=duration,
+            transcript=transcript_text,
             appointment_booked=session.appointment_booked,
         )
         log_transcript(record)
