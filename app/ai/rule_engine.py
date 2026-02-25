@@ -5,7 +5,7 @@ Handles inbound/outbound salon conversations using keyword matching,
 regex data extraction, and the live knowledge base.
 
 Covers ~80% of real salon call scenarios:
-  - Full booking flow (service → date → time → name → phone → email → confirm → book)
+  - Full booking flow (service → date → time → name → email [optional] → confirm → book)
   - Hours/location/services/pricing queries
   - FAQ lookup from knowledge base
   - Appointment confirmation and reminders (outbound)
@@ -52,6 +52,7 @@ _INTENTS: dict[str, list[str]] = {
         "right", "great", "confirm", "confirmed",
     ],
     "deny": ["no", "nope", "wrong", "incorrect", "not right", "different", "change"],
+    "skip": ["skip", "no email", "don't have", "don't want", "no thanks", "that's fine", "pass"],
     "repeat": ["sorry", "what", "repeat", "again", "didn't catch", "pardon", "come again"],
     "goodbye": [
         "thank you", "thanks", "bye", "goodbye", "that's all",
@@ -66,8 +67,14 @@ _PROMPTS: dict[str, str] = {
     "preferred_date": "What date would you like to come in?",
     "preferred_time": "What time works best for you?",
     "customer_name":  "Can I get your full name please?",
-    "phone_number":   "And what is a good phone number for you?",
-    "email":          "What is your email address so we can send a confirmation?",
+}
+
+# ── Word-to-number maps ───────────────────────────────────────────────────────
+
+_WORD_TO_NUM: dict[str, int] = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12,
 }
 
 # ── Date helpers ─────────────────────────────────────────────────────────────
@@ -83,6 +90,28 @@ _DAYS = {
 }
 
 
+# ── Display helpers ───────────────────────────────────────────────────────────
+
+def _fmt_date(date_str: str) -> str:
+    """Format ISO date to human-readable: 'Friday, March 1'."""
+    try:
+        d = date.fromisoformat(date_str)
+        return d.strftime("%A, %B %-d")
+    except Exception:
+        return date_str
+
+
+def _fmt_time(time_str: str) -> str:
+    """Format HH:MM (24-hour) to '2:00 PM'."""
+    try:
+        h, m = map(int, time_str.split(":"))
+        ampm = "AM" if h < 12 else "PM"
+        h12 = h % 12 or 12
+        return f"{h12}:{m:02d} {ampm}"
+    except Exception:
+        return time_str
+
+
 # ── Extraction functions ─────────────────────────────────────────────────────
 
 def _intent(text: str) -> str:
@@ -94,12 +123,43 @@ def _intent(text: str) -> str:
 
 
 def _extract_service(text: str) -> str | None:
+    """
+    Match a service name from customer speech.
+
+    Strategy:
+    1. Exact substring match first (most precise).
+    2. Word-based scoring: split service name into meaningful words and count
+       how many appear in the customer text.  This lets "haircut" match
+       "Haircut & Style", "massage" match "Swedish Massage", etc.
+    Best-scoring service wins; ties go to the longer service name (more specific).
+    """
     t = text.lower()
+
+    # Pass 1 — full name substring
     for svc in get_services_flat():
         svc_name = svc["name"] if isinstance(svc, dict) else svc
         if svc_name.lower() in t:
             return svc_name
-    return None
+
+    # Pass 2 — word-based scoring
+    best_name: str | None = None
+    best_score: int = 0
+
+    for svc in get_services_flat():
+        svc_name = svc["name"] if isinstance(svc, dict) else svc
+        # Significant words: alpha-only, length >= 3, ignore stop-words
+        words = [
+            w for w in re.split(r"[\s&,/()\-]+", svc_name.lower())
+            if len(w) >= 3 and w not in {"min", "the", "and", "for", "per"}
+        ]
+        if not words:
+            continue
+        score = sum(1 for w in words if w in t)
+        if score > best_score or (score == best_score and score > 0 and len(svc_name) > len(best_name or "")):
+            best_score = score
+            best_name = svc_name
+
+    return best_name if best_score >= 1 else None
 
 
 def _extract_date(text: str) -> str | None:
@@ -150,6 +210,11 @@ def _extract_date(text: str) -> str | None:
 
 
 def _extract_time(text: str) -> str | None:
+    """
+    Extract time from speech.  Handles:
+    - Digit formats: "2:30 pm", "14:30", "2pm"
+    - Word numbers:  "two pm", "two o'clock", "two thirty", "half past two"
+    """
     t = text.lower()
 
     if "noon" in t or "midday" in t:
@@ -167,7 +232,7 @@ def _extract_time(text: str) -> str | None:
             h = 0
         return f"{h:02d}:{mn:02d}"
 
-    # "2pm", "2 pm", "two pm"
+    # "2pm", "2 pm"
     m = re.search(r"\b(\d{1,2})\s*(am|pm)\b", t)
     if m:
         h, ampm = int(m.group(1)), m.group(2)
@@ -176,6 +241,42 @@ def _extract_time(text: str) -> str | None:
         elif ampm == "am" and h == 12:
             h = 0
         return f"{h:02d}:00"
+
+    # Word-number time: "two pm", "two o'clock", "two o'clock pm"
+    for word, num in _WORD_TO_NUM.items():
+        pattern = rf"\b{word}\b"
+        if re.search(pattern, t):
+            ampm_m = re.search(r"\b(am|pm)\b", t)
+            # "o'clock" → assume context; use am/pm if present
+            h = num
+            if ampm_m:
+                ampm = ampm_m.group(1)
+                if ampm == "pm" and h < 12:
+                    h += 12
+                elif ampm == "am" and h == 12:
+                    h = 0
+                return f"{h:02d}:00"
+            # "two o'clock" without am/pm — ambiguous, skip
+            if "o'clock" in t or "oclock" in t:
+                # Default to business hours: 1-8 → PM, 9-12 → AM
+                if 1 <= h <= 8:
+                    h += 12
+                return f"{h:02d}:00"
+
+    # "two thirty pm" / "two thirty"
+    words = t.split()
+    for i, word in enumerate(words):
+        if word in _WORD_TO_NUM and i + 1 < len(words) and words[i + 1] in _WORD_TO_NUM:
+            h = _WORD_TO_NUM[word]
+            mn = _WORD_TO_NUM[words[i + 1]]
+            ampm_m = re.search(r"\b(am|pm)\b", t)
+            if ampm_m:
+                ampm = ampm_m.group(1)
+                if ampm == "pm" and h < 12:
+                    h += 12
+                elif ampm == "am" and h == 12:
+                    h = 0
+            return f"{h:02d}:{mn:02d}"
 
     return None
 
@@ -199,15 +300,40 @@ def _extract_name(text: str) -> str | None:
 
 
 def _extract_phone(text: str) -> str | None:
+    # Digits (handles "555-123-4567", "+1 555 123 4567", etc.)
     digits = re.sub(r"[^\d+]", "", text)
     if len(digits) >= 10:
         return digits
+
+    # Spoken word digits: "five five five one two three four five six seven"
+    spoken_map = {
+        "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
+        "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+    }
+    words = text.lower().split()
+    spoken_digits = [spoken_map[w] for w in words if w in spoken_map]
+    if len(spoken_digits) >= 10:
+        return "".join(spoken_digits)
+
     return None
 
 
 def _extract_email(text: str) -> str | None:
+    # Direct "@" email
     m = re.search(r"\b[\w._%+\-]+@[\w.\-]+\.[a-zA-Z]{2,}\b", text)
-    return m.group() if m else None
+    if m:
+        return m.group()
+
+    # Spoken email: "john at gmail dot com"
+    spoken = text.lower()
+    spoken = re.sub(r"\bat\b", "@", spoken)
+    spoken = re.sub(r"\bdot\b", ".", spoken)
+    spoken = re.sub(r"\s+", "", spoken)
+    m = re.search(r"\b[\w._%+\-]+@[\w.\-]+\.[a-zA-Z]{2,}\b", spoken)
+    if m:
+        return m.group()
+
+    return None
 
 
 def _extract_all(text: str, appt: AppointmentData) -> dict:
@@ -258,11 +384,18 @@ def _hours_message() -> str:
     return "Our hours are: " + "; ".join(parts) + " Would you like to book an appointment?"
 
 
+def _service_names() -> list[str]:
+    """Return a flat list of service name strings."""
+    return [
+        (s["name"] if isinstance(s, dict) else s)
+        for s in get_services_flat()
+    ]
+
+
 def _services_message() -> str:
-    svcs = get_services_flat()
-    if not svcs:
+    names = _service_names()
+    if not names:
         return "We offer a range of hair and beauty services. What are you looking for?"
-    names = [s["name"] if isinstance(s, dict) else s for s in svcs]
     shown = names[:8]
     extra = len(names) - 8
     tail = f", and {extra} more" if extra > 0 else ""
@@ -402,9 +535,26 @@ def get_rule_based_inbound_response(
     missing = merged.missing_required_fields()
 
     if not missing:
-        # All fields collected — ask for confirmation
-        d = merged.preferred_date or "?"
-        t = merged.preferred_time or "?"
+        # All required fields collected.
+        # Optional: ask for email once if not yet provided and not yet asked.
+        email_already_asked = "email" in last_msg
+        if not merged.email and not email_already_asked:
+            # Customer may also skip by saying "skip", "no", "no email", etc.
+            if intent in ("skip", "deny"):
+                pass  # fall through to confirmation
+            else:
+                return AgentResponse(
+                    message=(
+                        "One last thing — could I get your email address for a booking confirmation? "
+                        "Or just say 'skip' if you'd prefer not to."
+                    ),
+                    extracted_data=extracted,
+                    action="continue",
+                )
+
+        # Build human-friendly confirmation
+        d = _fmt_date(merged.preferred_date) if merged.preferred_date else "?"
+        t = _fmt_time(merged.preferred_time) if merged.preferred_time else "?"
         svc = merged.service or "?"
         n = merged.customer_name or "?"
         return AgentResponse(
@@ -422,11 +572,10 @@ def get_rule_based_inbound_response(
 
     # Enrich service prompt with options
     if next_field == "service":
-        svcs = get_services_flat()
-        if svcs:
-            names = [s["name"] if isinstance(s, dict) else s for s in svcs]
+        names = _service_names()
+        if names:
             sample = ", ".join(names[:5])
-            extra = f" and more" if len(names) > 5 else ""
+            extra = " and more" if len(names) > 5 else ""
             prompt = f"What service would you like? We offer {sample}{extra}."
 
     return AgentResponse(message=prompt, extracted_data=extracted, action="continue")

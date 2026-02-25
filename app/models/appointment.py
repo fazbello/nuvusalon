@@ -46,14 +46,16 @@ class AppointmentData(BaseModel):
     notes: Optional[str] = None
 
     def missing_required_fields(self) -> list[str]:
-        """Return names of fields still needed to book."""
+        """Return names of fields still needed to book.
+
+        Email is excluded — collected optionally after all required fields.
+        Phone is pre-filled from caller ID so never blocks the flow.
+        """
         required = {
-            "customer_name": self.customer_name,
-            "phone_number": self.phone_number,
-            "email": self.email,
             "service": self.service,
             "preferred_date": self.preferred_date,
             "preferred_time": self.preferred_time,
+            "customer_name": self.customer_name,
         }
         return [k for k, v in required.items() if not v]
 

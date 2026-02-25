@@ -111,6 +111,12 @@ def setup_spreadsheet() -> str:
 def log_appointment(appointment: AppointmentData, calendar_link: str = "") -> None:
     """Append a new appointment row to the Appointments tab."""
     settings = get_settings()
+    if not settings.google_sheet_id:
+        logger.debug("GOOGLE_SHEET_ID not configured — skipping appointment log")
+        return
+    if not settings.get_google_credentials_info():
+        logger.debug("Google credentials not configured — skipping appointment log")
+        return
     client = _get_client()
     spreadsheet = client.open_by_key(settings.google_sheet_id)
     ws = _get_or_create_sheet(spreadsheet, APPOINTMENTS_TAB, APPOINTMENTS_HEADERS)
@@ -139,6 +145,12 @@ def log_appointment(appointment: AppointmentData, calendar_link: str = "") -> No
 def log_transcript(record: TranscriptRecord) -> None:
     """Append a call transcript to the Transcripts tab."""
     settings = get_settings()
+    if not settings.google_sheet_id:
+        logger.debug("GOOGLE_SHEET_ID not configured — skipping transcript log")
+        return
+    if not settings.get_google_credentials_info():
+        logger.debug("Google credentials not configured — skipping transcript log")
+        return
     client = _get_client()
     spreadsheet = client.open_by_key(settings.google_sheet_id)
     ws = _get_or_create_sheet(spreadsheet, TRANSCRIPTS_TAB, TRANSCRIPTS_HEADERS)
