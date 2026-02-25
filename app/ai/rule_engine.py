@@ -124,16 +124,20 @@ def _intent(text: str) -> str:
 
 def _extract_service(text: str) -> str | None:
     """
-    Match a service name from customer speech.
+    Match a service name from customer speech using three passes:
 
-    Strategy:
-    1. Exact substring match first (most precise).
-    2. Word-based scoring: split service name into meaningful words and count
-       how many appear in the customer text.  This lets "haircut" match
-       "Haircut & Style", "massage" match "Swedish Massage", etc.
-    Best-scoring service wins; ties go to the longer service name (more specific).
+    1. Exact substring — "haircut & style" in text (most precise).
+    2. Service-word scoring — count how many words from the service name
+       appear in the customer text ("haircut" in "I want a haircut").
+    3. Prefix / subword matching — a customer word is a prefix of a service
+       word ("hair" → "haircut", "pedi" → "pedicure", "faci" → "facial").
+       Scores 0.5 per match so exact word hits always outrank prefix hits.
+
+    Best-scoring service wins; ties favour the more specific (longer) name.
     """
     t = text.lower()
+    t_words = [w for w in re.split(r"\s+", t) if len(w) >= 3]
+    _stop = {"min", "the", "and", "for", "per", "with"}
 
     # Pass 1 — full name substring
     for svc in get_services_flat():
@@ -141,25 +145,37 @@ def _extract_service(text: str) -> str | None:
         if svc_name.lower() in t:
             return svc_name
 
-    # Pass 2 — word-based scoring
     best_name: str | None = None
-    best_score: int = 0
+    best_score: float = 0.0
 
     for svc in get_services_flat():
         svc_name = svc["name"] if isinstance(svc, dict) else svc
-        # Significant words: alpha-only, length >= 3, ignore stop-words
-        words = [
+        svc_words = [
             w for w in re.split(r"[\s&,/()\-]+", svc_name.lower())
-            if len(w) >= 3 and w not in {"min", "the", "and", "for", "per"}
+            if len(w) >= 3 and w not in _stop
         ]
-        if not words:
+        if not svc_words:
             continue
-        score = sum(1 for w in words if w in t)
-        if score > best_score or (score == best_score and score > 0 and len(svc_name) > len(best_name or "")):
+
+        # Pass 2 — exact service-word appears in customer text
+        score: float = sum(1.0 for w in svc_words if w in t)
+
+        # Pass 3 — customer word is a prefix of a service word
+        if score == 0:
+            score += sum(
+                0.5
+                for tw in t_words
+                for sw in svc_words
+                if sw.startswith(tw) and tw != sw
+            )
+
+        if score > best_score or (
+            score == best_score and score > 0 and len(svc_name) > len(best_name or "")
+        ):
             best_score = score
             best_name = svc_name
 
-    return best_name if best_score >= 1 else None
+    return best_name if best_score >= 0.5 else None
 
 
 def _extract_date(text: str) -> str | None:

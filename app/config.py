@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     # ── Voice / TTS ────────────────────────────────────────────
     tts_voice: str = "Polly.Joanna"  # Twilio <Say> voice
     speech_timeout: str = "auto"
-    gather_timeout: int = 5
+    gather_timeout: int = 8  # seconds to wait for caller to start speaking
     language: str = "en-US"
 
     class Config:

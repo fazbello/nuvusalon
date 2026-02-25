@@ -290,6 +290,7 @@
     <!-- Tabs -->
     <div class="tabs">
       <div class="tab active" data-tab="outbound">Outbound Calls</div>
+      <div class="tab" data-tab="incomplete">Incomplete Bookings <span id="incomplete-badge" style="display:none;background:var(--amber);color:#000;font-size:10px;padding:1px 7px;border-radius:10px;margin-left:4px;font-weight:700"></span></div>
       <div class="tab" data-tab="transcripts">Call Transcripts</div>
       <div class="tab" data-tab="appointments">Appointments</div>
       <div class="tab" data-tab="active">Active Calls</div>
@@ -354,6 +355,25 @@
             <div class="call-result" id="callResult"></div>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- ── Tab: Incomplete Bookings ─────────────── -->
+    <div class="tab-content" id="tab-incomplete">
+      <div class="panel" style="margin-bottom:16px">
+        <p style="font-size:13px;color:var(--muted);line-height:1.7">
+          These are calls where the customer provided some details but hung up before the booking completed.
+          Follow up by calling them back or dismissing entries that don't need action.
+        </p>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <h2>Incomplete Bookings</h2>
+          <button class="btn btn-secondary" onclick="loadIncompleteBookings()">Refresh</button>
+        </div>
+        <div id="incompleteBody">
+          <div class="loading">Loading...</div>
+        </div>
       </div>
     </div>
 
@@ -790,6 +810,7 @@
         if (tab.dataset.tab === 'appointments') loadAppointments();
         if (tab.dataset.tab === 'active') loadActiveCalls();
         if (tab.dataset.tab === 'insights') loadInsights();
+        if (tab.dataset.tab === 'incomplete') loadIncompleteBookings();
         if (tab.dataset.tab === 'configure') loadConfigData();
         if (tab.dataset.tab === 'setup') loadSetup();
       });
@@ -1590,9 +1611,90 @@
       });
     }
 
+    // ── Incomplete Bookings ────────────────────────
+    async function loadIncompleteBookings() {
+      const container = document.getElementById('incompleteBody');
+      container.innerHTML = '<div class="loading">Loading...</div>';
+      try {
+        const res = await fetch('/api/incomplete-bookings');
+        const data = await res.json();
+        const bookings = data.bookings || [];
+
+        // Update badge
+        const badge = document.getElementById('incomplete-badge');
+        if (bookings.length > 0) {
+          badge.textContent = bookings.length;
+          badge.style.display = 'inline';
+        } else {
+          badge.style.display = 'none';
+        }
+
+        if (bookings.length === 0) {
+          container.innerHTML = `<div class="empty-state">
+            <p><strong>No incomplete bookings</strong></p>
+            <p>When callers provide some details but don't finish booking, they'll appear here.</p>
+          </div>`;
+          return;
+        }
+
+        let html = `<table><thead><tr>
+          <th>Time</th><th>Phone</th><th>Name</th><th>Service</th>
+          <th>Date</th><th>Time</th><th>Fields</th><th>Duration</th><th>Action</th>
+        </tr></thead><tbody>`;
+
+        bookings.forEach(b => {
+          const appt = b.appointment || {};
+          const fields = (b.fields_collected || []).join(', ');
+          const phone = appt.phone_number || b.from_number || '—';
+          html += `<tr id="ib-${escapeAttr(b.id)}">
+            <td style="white-space:nowrap">${escapeHtml(b.created_at || '—')}</td>
+            <td><strong>${escapeHtml(phone)}</strong></td>
+            <td>${escapeHtml(appt.customer_name || '—')}</td>
+            <td>${escapeHtml(appt.service || '—')}</td>
+            <td>${escapeHtml(appt.preferred_date || '—')}</td>
+            <td>${escapeHtml(appt.preferred_time || '—')}</td>
+            <td style="font-size:11px;color:var(--muted)">${escapeHtml(fields)}</td>
+            <td>${b.duration_seconds ? b.duration_seconds + 's' : '—'}</td>
+            <td>
+              <div style="display:flex;gap:6px">
+                ${phone !== '—' ? `<a href="tel:${escapeAttr(phone)}" class="btn btn-secondary" style="padding:5px 10px;font-size:12px;text-decoration:none">Call Back</a>` : ''}
+                <button onclick="dismissIncomplete('${escapeAttr(b.id)}')"
+                  style="padding:5px 10px;font-size:12px;background:none;border:1px solid var(--border);
+                    color:var(--muted);border-radius:6px;cursor:pointer;transition:.2s"
+                  onmouseover="this.style.color='var(--red)'"
+                  onmouseout="this.style.color='var(--muted)'">Dismiss</button>
+              </div>
+            </td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      } catch (err) {
+        container.innerHTML = `<div class="empty-state">
+          <p><strong>Could not load incomplete bookings</strong></p>
+          <p>${escapeHtml(err.message)}</p>
+        </div>`;
+      }
+    }
+
+    async function dismissIncomplete(id) {
+      try {
+        const res = await fetch(`/api/incomplete-bookings/${id}/dismiss`, { method: 'POST' });
+        if (res.ok) {
+          const row = document.getElementById('ib-' + id);
+          if (row) {
+            row.style.opacity = '0.3';
+            row.style.pointerEvents = 'none';
+            setTimeout(() => { row.remove(); loadIncompleteBookings(); }, 600);
+          }
+        }
+      } catch (err) { console.error('Dismiss failed:', err); }
+    }
+
     // ── Init ───────────────────────────────────────
     loadDropdowns();
     loadActiveCalls();
+    loadIncompleteBookings();  // Check for pending follow-ups on load
 
     // Auto-refresh active calls every 10s
     setInterval(loadActiveCalls, 10000);

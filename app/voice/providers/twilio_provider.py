@@ -72,12 +72,17 @@ class TwilioProvider(VoiceProvider):
             input="speech",
             action=action_url,
             method="POST",
-            timeout=s.gather_timeout,
+            # At least 8 s so slow/hesitant callers aren't cut off
+            timeout=max(int(s.gather_timeout), 8),
             speech_timeout=s.speech_timeout,
             language=s.language,
+            # Always POST to action even when no speech detected —
+            # our handler re-prompts gracefully for empty SpeechResult
+            action_on_empty_result=True,
         )
         gather.say(message, voice=s.tts_voice)
         response.append(gather)
+        # Fallback if gather itself fails (rare): say something and retry
         response.say(timeout_message, voice=s.tts_voice)
         response.redirect(timeout_url, method="POST")
         return str(response)

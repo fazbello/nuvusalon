@@ -148,10 +148,12 @@ async def landing_page(request: Request):
     settings = get_settings()
     template = (_TEMPLATES / "index.html").read_text()
 
-    # Build service options for the dropdown
+    # Build service options for the dropdown — get_services_flat returns dicts
     services = get_services_flat()
+    def _svc_name(s) -> str:
+        return s["name"] if isinstance(s, dict) else str(s)
     service_options = "\n".join(
-        f'<option value="{s}">{s}</option>' for s in services
+        f'<option value="{_svc_name(s)}">{_svc_name(s)}</option>' for s in services
     ) if services else '<option value="Haircut">Haircut</option>'
 
     phone = settings.twilio_phone_number or ""
@@ -642,22 +644,66 @@ async def api_outbound_call(outbound_request: OutboundCallRequest, request: Requ
 
 @app.get("/api/transcripts")
 async def api_transcripts(limit: int = 50):
-    """Fetch recent call transcripts from Google Sheets."""
-    try:
-        rows = get_transcripts(limit=limit)
-        return {"transcripts": rows}
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": str(exc)})
+    """
+    Fetch recent call transcripts.
+    Tries Google Sheets first; falls back to local JSON store so the
+    dashboard always shows data even when Sheets is not configured.
+    """
+    from app.integrations.local_store import get_local_transcripts
+    settings = get_settings()
+    if settings.google_sheet_id and settings.get_google_credentials_info():
+        try:
+            rows = get_transcripts(limit=limit)
+            if rows:
+                return {"transcripts": rows, "source": "sheets"}
+        except Exception as exc:
+            logger.warning("Sheets transcripts failed, falling back to local: %s", exc)
+    # Local fallback (always available)
+    rows = get_local_transcripts(limit=limit)
+    return {"transcripts": rows, "source": "local"}
 
 
 @app.get("/api/appointments")
 async def api_appointments(limit: int = 50):
-    """Fetch recent appointments from Google Sheets."""
+    """
+    Fetch recent appointments.
+    Tries Google Sheets first; falls back to local JSON store.
+    """
+    from app.integrations.local_store import get_local_appointments
+    settings = get_settings()
+    if settings.google_sheet_id and settings.get_google_credentials_info():
+        try:
+            rows = get_appointments(limit=limit)
+            if rows:
+                return {"appointments": rows, "source": "sheets"}
+        except Exception as exc:
+            logger.warning("Sheets appointments failed, falling back to local: %s", exc)
+    rows = get_local_appointments(limit=limit)
+    return {"appointments": rows, "source": "local"}
+
+
+@app.get("/api/incomplete-bookings")
+async def api_incomplete_bookings(include_dismissed: bool = False):
+    """
+    Return calls that ended without a completed booking but collected
+    partial data (name, service, date, etc.) — so the salon can follow up.
+    """
+    from app.integrations.local_store import get_incomplete_bookings
     try:
-        rows = get_appointments(limit=limit)
-        return {"appointments": rows}
+        bookings = get_incomplete_bookings(include_dismissed=include_dismissed)
+        return {"bookings": bookings, "count": len(bookings)}
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@app.post("/api/incomplete-bookings/{booking_id}/dismiss")
+async def api_dismiss_incomplete_booking(booking_id: str):
+    """Mark an incomplete booking as dismissed (removes it from the action queue)."""
+    from app.integrations.local_store import dismiss_incomplete_booking
+    success = dismiss_incomplete_booking(booking_id)
+    if success:
+        return {"status": "dismissed"}
+    return JSONResponse(status_code=404, content={"error": "Booking not found"})
 
 
 @app.post("/api/setup-sheets")

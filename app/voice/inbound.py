@@ -23,6 +23,10 @@ from app.integrations.email_sender import (
 )
 from app.integrations.google_calendar import create_appointment_event
 from app.integrations.google_sheets import log_appointment, log_transcript
+from app.integrations.local_store import (
+    save_incomplete_booking,
+    save_transcript as local_save_transcript,
+)
 from app.models.appointment import CallType, TranscriptRecord
 from app.voice.providers import get_provider
 from app.voice.session import (
@@ -187,29 +191,66 @@ async def _book_appointment(session: CallSession, settings) -> str:
 
 
 async def _finalize_call(session: CallSession, appointment_booked: bool) -> None:
-    """Log transcript, update learner stats, and clean up session."""
+    """Log transcript, save incomplete booking if needed, update stats, clean up."""
+    appt_dict = session.appointment.model_dump() if appointment_booked else None
+    transcript_text = session.get_transcript()
+    started_at = session.created_at.strftime("%Y-%m-%d %H:%M:%S")
+    duration = session.duration_seconds()
+
+    # ── 1. Always save to local JSON store (works without Sheets) ──
+    try:
+        local_save_transcript(
+            call_sid=session.call_sid,
+            call_type=session.call_type.value,
+            from_number=session.from_number,
+            to_number=session.to_number,
+            started_at=started_at,
+            duration_seconds=duration,
+            transcript=transcript_text,
+            appointment_booked=appointment_booked,
+            appointment_data=appt_dict,
+        )
+    except Exception as exc:
+        logger.warning("local_store.save_transcript failed [%s]: %s", type(exc).__name__, exc)
+
+    # ── 2. If the call ended without a completed booking, save partial data ──
+    if not appointment_booked:
+        try:
+            save_incomplete_booking(
+                appointment=session.appointment,
+                call_sid=session.call_sid,
+                from_number=session.from_number,
+                duration_seconds=duration,
+            )
+        except Exception as exc:
+            logger.warning(
+                "local_store.save_incomplete_booking failed [%s]: %s",
+                type(exc).__name__, exc,
+            )
+
+    # ── 3. Also sync to Google Sheets (optional — skipped if not configured) ──
     try:
         record = TranscriptRecord(
             call_sid=session.call_sid,
             call_type=session.call_type,
             from_number=session.from_number,
             to_number=session.to_number,
-            started_at=session.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            duration_seconds=session.duration_seconds(),
-            transcript=session.get_transcript(),
+            started_at=started_at,
+            duration_seconds=duration,
+            transcript=transcript_text,
             appointment_booked=appointment_booked,
-            appointment_data=session.appointment.model_dump() if appointment_booked else None,
+            appointment_data=appt_dict,
         )
         log_transcript(record)
     except Exception as exc:
-        logger.error("Failed to log transcript [%s]: %s", type(exc).__name__, exc)
+        logger.error("Failed to log transcript to Sheets [%s]: %s", type(exc).__name__, exc)
 
-    # Update call statistics for the Insights dashboard
+    # ── 4. Update call statistics for the Insights dashboard ──
     try:
         from app.ai.learner import record_call
         record_call(
             call_type="inbound",
-            appointment_data=session.appointment.model_dump() if appointment_booked else None,
+            appointment_data=appt_dict,
             booked=appointment_booked,
         )
     except Exception as exc:
