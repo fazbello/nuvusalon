@@ -77,6 +77,44 @@ _WORD_TO_NUM: dict[str, int] = {
     "eleven": 11, "twelve": 12,
 }
 
+# Spoken minute values — "two thirty", "three fifteen", etc.
+_WORD_MINS_MAP: dict[str, int] = {
+    "oh": 0, "zero": 0,
+    "five": 5, "ten": 10,
+    "fifteen": 15, "quarter": 15,
+    "twenty": 20, "twenty-five": 25,
+    "thirty": 30, "half": 30,
+    "thirty-five": 35,
+    "forty": 40, "forty-five": 45,
+    "fifty": 50, "fifty-five": 55,
+}
+
+# Words that must NOT appear in a short "name" response
+_NAME_EXCLUSIONS: frozenset[str] = frozenset({
+    # Fillers / discourse markers
+    "um", "uh", "er", "ah", "hmm", "well", "so",
+    "yes", "no", "yeah", "yep", "yup", "nope",
+    "sure", "right", "ok", "okay", "great", "perfect", "alright",
+    # Number words (customer may be answering a time/date question)
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+    "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
+    "hundred", "thousand",
+    # Ordinals
+    "first", "second", "third", "fourth", "fifth", "sixth",
+    # Time / AM-PM words
+    "am", "pm", "morning", "afternoon", "evening", "night", "noon", "midnight",
+    "half", "quarter", "past", "oclock",
+    # Day names
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    # Month names (April, May, June, August are common first names — keep them)
+    "january", "february", "march", "july",
+    "september", "october", "november", "december",
+    # Booking / filler words
+    "today", "tomorrow", "next", "the", "and", "or",
+    "book", "appointment", "service", "please", "want",
+})
+
 # ── Date helpers ─────────────────────────────────────────────────────────────
 
 _MONTHS = {
@@ -225,92 +263,150 @@ def _extract_date(text: str) -> str | None:
     return None
 
 
+def _apply_ampm(h: int, ampm: str | None, context: str = "") -> int:
+    """Apply am/pm to a 12-hour value, inferring from context words when needed."""
+    if ampm is None:
+        if any(w in context for w in ("afternoon", "evening", "tonight", "night")):
+            ampm = "pm"
+        elif "morning" in context:
+            ampm = "am"
+        else:
+            # Business-hours heuristic: 1–8 → PM (salon is open afternoons)
+            if 1 <= h <= 8:
+                ampm = "pm"
+    if ampm == "pm" and h < 12:
+        h += 12
+    elif ampm == "am" and h == 12:
+        h = 0
+    return h
+
+
 def _extract_time(text: str) -> str | None:
     """
     Extract time from speech.  Handles:
-    - Digit formats: "2:30 pm", "14:30", "2pm"
-    - Word numbers:  "two pm", "two o'clock", "two thirty", "half past two"
+    - Digit formats:   "2:30 pm", "14:30", "2pm"
+    - Phrase formats:  "half past two", "quarter past three", "quarter to four"
+    - Word numbers:    "two pm", "two o'clock", "two thirty", "three fifteen"
+    - Context clues:   "three in the afternoon" → 15:00
     """
     t = text.lower()
 
-    if "noon" in t or "midday" in t:
+    if re.search(r"\b(noon|midday)\b", t):
         return "12:00"
-    if "midnight" in t:
+    if re.search(r"\bmidnight\b", t):
         return "00:00"
 
-    # "2:30 pm", "14:30"
+    # Detect explicit am/pm once for reuse
+    ampm_m = re.search(r"\b(am|pm)\b", t)
+    ampm = ampm_m.group(1) if ampm_m else None
+
+    # "2:30 pm", "14:30", "2:30"
     m = re.search(r"\b(\d{1,2}):(\d{2})\s*(am|pm)?\b", t)
     if m:
-        h, mn, ampm = int(m.group(1)), int(m.group(2)), m.group(3)
-        if ampm == "pm" and h < 12:
-            h += 12
-        elif ampm == "am" and h == 12:
-            h = 0
+        h, mn = int(m.group(1)), int(m.group(2))
+        h = _apply_ampm(h, m.group(3) or ampm, t)
         return f"{h:02d}:{mn:02d}"
 
     # "2pm", "2 pm"
     m = re.search(r"\b(\d{1,2})\s*(am|pm)\b", t)
     if m:
-        h, ampm = int(m.group(1)), m.group(2)
-        if ampm == "pm" and h < 12:
-            h += 12
-        elif ampm == "am" and h == 12:
-            h = 0
+        h = _apply_ampm(int(m.group(1)), m.group(2), t)
         return f"{h:02d}:00"
 
-    # Word-number time: "two pm", "two o'clock", "two o'clock pm"
-    for word, num in _WORD_TO_NUM.items():
-        pattern = rf"\b{word}\b"
-        if re.search(pattern, t):
-            ampm_m = re.search(r"\b(am|pm)\b", t)
-            # "o'clock" → assume context; use am/pm if present
-            h = num
-            if ampm_m:
-                ampm = ampm_m.group(1)
-                if ampm == "pm" and h < 12:
-                    h += 12
-                elif ampm == "am" and h == 12:
-                    h = 0
-                return f"{h:02d}:00"
-            # "two o'clock" without am/pm — ambiguous, skip
-            if "o'clock" in t or "oclock" in t:
-                # Default to business hours: 1-8 → PM, 9-12 → AM
-                if 1 <= h <= 8:
-                    h += 12
-                return f"{h:02d}:00"
-
-    # "two thirty pm" / "two thirty"
-    words = t.split()
-    for i, word in enumerate(words):
-        if word in _WORD_TO_NUM and i + 1 < len(words) and words[i + 1] in _WORD_TO_NUM:
-            h = _WORD_TO_NUM[word]
-            mn = _WORD_TO_NUM[words[i + 1]]
-            ampm_m = re.search(r"\b(am|pm)\b", t)
-            if ampm_m:
-                ampm = ampm_m.group(1)
-                if ampm == "pm" and h < 12:
-                    h += 12
-                elif ampm == "am" and h == 12:
-                    h = 0
+    # "half past two", "quarter past three"
+    m = re.search(r"\b(half|quarter)\s+past\s+(\w+)", t)
+    if m:
+        mins_word, hour_word = m.group(1), m.group(2)
+        if hour_word in _WORD_TO_NUM:
+            h = _apply_ampm(_WORD_TO_NUM[hour_word], ampm, t)
+            mn = _WORD_MINS_MAP.get(mins_word, 0)
             return f"{h:02d}:{mn:02d}"
+
+    # "quarter to four" → 3:45
+    m = re.search(r"\bquarter\s+to\s+(\w+)", t)
+    if m and m.group(1) in _WORD_TO_NUM:
+        h = _apply_ampm(_WORD_TO_NUM[m.group(1)], ampm, t)
+        total = h * 60 - 15
+        return f"{total // 60:02d}:{total % 60:02d}"
+
+    # Word hour + optional word minutes: "two thirty", "three fifteen", "ten thirty pm"
+    # Normalise hyphens so "forty-five" stays as one token when we split
+    normalised = re.sub(r"(\w)-(\w)", r"\1_\2", t)
+    words = [w.replace("_", "-") for w in normalised.split()]
+
+    for i, word in enumerate(words):
+        if word not in _WORD_TO_NUM:
+            continue
+        h_raw = _WORD_TO_NUM[word]
+        mn = 0
+        found_minutes = False
+
+        if i + 1 < len(words):
+            nw = words[i + 1]
+            if nw in _WORD_MINS_MAP:
+                mn = _WORD_MINS_MAP[nw]
+                found_minutes = True
+            elif nw == "twenty" and i + 2 < len(words):
+                # "twenty five", "twenty one", etc.
+                _ones = {
+                    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+                    "six": 6, "seven": 7, "eight": 8, "nine": 9,
+                }
+                if words[i + 2] in _ones:
+                    mn = 20 + _ones[words[i + 2]]
+                else:
+                    mn = 20
+                found_minutes = True
+
+        if found_minutes:
+            h = _apply_ampm(h_raw, ampm, t)
+            return f"{h:02d}:{mn:02d}"
+
+        # No minutes word — return if we have any explicit time context
+        has_time_context = (
+            ampm is not None
+            or "o'clock" in t or "oclock" in t
+            or any(w in t for w in ("afternoon", "morning", "evening", "night", "tonight"))
+        )
+        if has_time_context:
+            h = _apply_ampm(h_raw, ampm, t)
+            return f"{h:02d}:00"
+
+    # Bare digit with a preposition: "at 3", "around 2"
+    m = re.search(r"\b(?:at|around|about)\s+(\d{1,2})\b", t)
+    if m:
+        h = _apply_ampm(int(m.group(1)), ampm, t)
+        return f"{h:02d}:00"
 
     return None
 
 
 def _extract_name(text: str) -> str | None:
+    # Trigger phrases: "my name is X", "I'm X", "call me X", "the name is X"
     m = re.search(
-        r"(?:my name is|i'?m|i am|it'?s|name'?s|call me)\s+([A-Z][a-z]+"
-        r"(?:\s+[A-Z][a-z]+)?)",
+        r"(?:my(?:\s+full)?\s+name\s+is\s+|the\s+name\s+is\s+|i'?m\s+|i\s+am\s+"
+        r"|it'?s\s+|name'?s\s+|call\s+me\s+)"
+        r"([A-Za-z][A-Za-z\-']*(?:\s+[A-Za-z][A-Za-z\-']*){0,2})",
         text,
         re.IGNORECASE,
     )
     if m:
-        return m.group(1).strip()
+        candidate = re.sub(r"[^A-Za-z\-' ]+$", "", m.group(1)).strip()
+        cwords = candidate.lower().split()
+        if cwords and not any(w in _NAME_EXCLUSIONS for w in cwords):
+            return candidate.title()
 
-    # Whole response is a short name
-    words = text.strip().split()
-    if 1 <= len(words) <= 3 and all(re.match(r"[A-Za-z\-']+$", w) for w in words):
-        return text.strip().title()
+    # Short whole-response heuristic (1–3 words that look like a name)
+    raw_words = text.strip().split()
+    # Strip leading/trailing punctuation from each token
+    cleaned = [re.sub(r"^[^A-Za-z]+|[^A-Za-z\-']+$", "", w) for w in raw_words]
+    cleaned = [w for w in cleaned if w]  # drop empty strings after stripping
+
+    if 1 <= len(cleaned) <= 4 and all(re.match(r"[A-Za-z][A-Za-z\-']*$", w) for w in cleaned):
+        lower_cleaned = [w.lower() for w in cleaned]
+        # Reject if any word is a number, filler, time word, etc.
+        if not any(w in _NAME_EXCLUSIONS for w in lower_cleaned):
+            return " ".join(w.title() for w in cleaned)
 
     return None
 
