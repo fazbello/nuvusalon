@@ -26,6 +26,20 @@ def _get_client() -> SendGridAPIClient:
 def _send(to_email: str, subject: str, html_body: str) -> bool:
     """Send a single email. Returns True on success."""
     settings = get_settings()
+    if not settings.sendgrid_api_key:
+        logger.warning(
+            "SENDGRID_API_KEY not configured — email to %s not sent. "
+            "Add SENDGRID_API_KEY in Railway Variables to enable email.",
+            to_email,
+        )
+        return False
+    if not settings.from_email:
+        logger.warning(
+            "FROM_EMAIL not configured — email to %s not sent. "
+            "Add FROM_EMAIL in Railway Variables to enable email.",
+            to_email,
+        )
+        return False
     message = Mail(
         from_email=settings.from_email,
         to_emails=to_email,
@@ -39,7 +53,7 @@ def _send(to_email: str, subject: str, html_body: str) -> bool:
         )
         return response.status_code in (200, 201, 202)
     except Exception as exc:
-        logger.error("Failed to send email to %s: %s", to_email, exc)
+        logger.error("Failed to send email to %s [%s]: %s", to_email, type(exc).__name__, exc)
         return False
 
 

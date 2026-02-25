@@ -63,7 +63,7 @@ async def handle_inbound_call(form_data: dict) -> str:
     return provider.build_gather(
         message=greeting,
         action_url="/voice/process-speech",
-        timeout_url="/voice/inbound",
+        timeout_url="/voice/process-speech",  # avoid destroying session on silence
         timeout_message="I didn't catch that. Could you please repeat?",
     )
 
@@ -87,9 +87,25 @@ async def handle_speech_input(form_data: dict) -> str:
         )
 
     logger.info("Call %s — speech (%s confidence): %s", wh.call_sid, wh.confidence, wh.speech_result)
+
+    # No speech detected — re-ask the last question without polluting history
+    if not wh.speech_result.strip():
+        last_agent = ""
+        for turn in reversed(session.history):
+            if turn["role"] == "agent":
+                last_agent = turn["content"]
+                break
+        prompt = last_agent or "I didn't catch that. Could you please repeat what you said?"
+        return provider.build_gather(
+            message=prompt,
+            action_url="/voice/process-speech",
+            timeout_url="/voice/process-speech",
+            timeout_message="I'm still having trouble hearing you. Please try again.",
+        )
+
     session.add_customer_message(wh.speech_result)
 
-    # Ask Gemini
+    # Ask AI / rule engine
     agent_response = await get_inbound_response(
         conversation_history=session.history,
         appointment=session.appointment,
@@ -124,7 +140,7 @@ async def handle_speech_input(form_data: dict) -> str:
         return provider.build_gather(
             message=agent_response.message,
             action_url="/voice/process-speech",
-            timeout_url="/voice/inbound",
+            timeout_url="/voice/process-speech",  # preserve session on silence
             timeout_message="I didn't catch that. Could you please repeat?",
         )
 
@@ -144,13 +160,13 @@ async def _book_appointment(session: CallSession, settings) -> str:
     try:
         log_appointment(appointment, calendar_link=calendar_link)
     except Exception as exc:
-        logger.error("Sheets logging failed: %s", exc)
+        logger.error("Sheets logging failed [%s]: %s", type(exc).__name__, exc)
 
     try:
         send_booking_confirmation(appointment)
         send_staff_notification(appointment)
     except Exception as exc:
-        logger.error("Email send failed: %s", exc)
+        logger.error("Email send failed [%s]: %s", type(exc).__name__, exc)
 
     session.appointment_booked = True
 
@@ -186,7 +202,7 @@ async def _finalize_call(session: CallSession, appointment_booked: bool) -> None
         )
         log_transcript(record)
     except Exception as exc:
-        logger.error("Failed to log transcript: %s", exc)
+        logger.error("Failed to log transcript [%s]: %s", type(exc).__name__, exc)
 
     # Update call statistics for the Insights dashboard
     try:
